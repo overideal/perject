@@ -13,7 +13,7 @@
 ;; TODO: modifying the buffer list from workmin--get-buffers: does this change the metadata?
 
 ;; auto-add-buffers variable (project . buffer-name)
-
+;; rename to perview
 
 
 ;; difference prefix arg, current prefix arg

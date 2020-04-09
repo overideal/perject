@@ -1,0 +1,24 @@
+* perject
+
+This package allows the user to manage multiple projects in a single Emacs instance.
+
+** The Name
+The name is a play on "per project", since this package manages frames and buffer per project.
+Moreover, "per" is a nod to the [[https://github.com/nex3/perspective-el][perspective]] package, which does a similar thing (a comparison follows below).
+
+** Installation and Setup
+Currently not on [[https://melpa.org/][melpa]].
+
+With [[https://github.com/jwiegley/use-package][use-package]], the code looks as follows:
+#+BEGIN_SRC emacs-lisp
+(use-package perject
+  :ensure nil
+  :load-path ;; your load path
+  :config (perject-mode 1))
+#+END_SRC
+
+Since *perject* makes heavy use of the built-in *desktop* package, make sure to not change any settings
+regarding desktop in your config file.
+
+** Setup
+TODO

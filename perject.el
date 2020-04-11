@@ -16,8 +16,6 @@
 ;; rename to perview
 
 
-;; difference prefix arg, current prefix arg
-
 ;; allow restoring of previously opened projects
 
 (require 'desktop)
@@ -732,7 +730,7 @@ is nil."
   "Return a string used for the mode line indicator of perject.
 This function is only used when `perject-mode-line-format' is t."
   (and (perject--current-project)
-       (propertize (perject--current-project)
+       (propertize (concat (perject--current-project) " ")
                    'face 'perject-mode-line-face)))
 
 

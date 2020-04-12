@@ -13,7 +13,6 @@
 ;; TODO: modifying the buffer list from perject--get-buffers: does this change the metadata?
 
 ;; auto-add-buffers variable (project . buffer-name)
-;; rename to perview
 
 
 ;; allow restoring of previously opened projects
@@ -21,7 +20,17 @@
 (require 'desktop)
 (require 'cl-lib) ;; for remove-if-not and some other stuff
 
-(defvar perject-projects nil ;; '(("test"))
+
+
+(defconst perject-command-line-option-no-load "--perject-no-load"
+  "Command line option, which will prevent Emacs from opening any perject projects.
+This is the same as starting Emacs with `perject-load-on-startup' and
+`perject-load-non-project' set to nil.
+It influences the `perject--init' function.")
+
+
+
+(defvar perject-projects nil
   "A list representing the projects.
 Each element is a list, where the car (first element) is a string,
 which is the name of the project and the cdr is the list of buffers
@@ -138,9 +147,17 @@ which were associate with no project, are saved, is determined by the
 variable `perject-save-non-project'.")
 
 (defvar perject-load-non-project t
-  "When non-nil, the buffers, which were associate with no project, are loaded at startup.
+  "When non-nil, the non-project buffers are loaded at startup.
 Otherwise, they are not loaded at startup, but may be manually loaded later by invoking
-`perject-load-non-project'.")
+`perject-load-non-project'.
+The non-project buffers are those which were not associated with any project.")
+
+(defvar perject-load-non-project-new-instance t
+  "When non-nil, the non-project buffers are loaded when opening a project in a new Emacs instance.
+Otherwise, they are not loaded at startup, but may be manually loaded later by invoking
+`perject-load-non-project'.
+The non-project buffers are those which were not associated with any project.
+This influences the command `perject-open-project-in-new-instance'.")
 
 (defvar perject-save-non-project t
   "When non-nil, the buffers, which were associate with no project, are saved when exiting Emacs.
@@ -213,8 +230,8 @@ A positive prefix argument enables the mode, any other prefix
 argument disables it.  From Lisp, argument omitted or nil enables
 the mode, `toggle' toggles the state.
 
-When perject mode is enabled, all the features of perject are
-usable."
+When perject mode is enabled, the user can manage projects using perject's
+features."
   ;; TODO overwork doc
   :global t
   :keymap nil
@@ -279,10 +296,9 @@ To restore the buffers and frames belonging to no project, run
   (interactive "P")
   (let ((name (perject--get-saved-project
                "Open project: "
-               "No project to open."
                (and (not arg)
-                    (lambda (name)
-                      (not (member name (perject--active-projects)))))))
+                    (perject--compose 'not 'perject--is-active-project))
+               "No project to open."))
         (frame (make-frame)))
     ;; (with-selected-frame frame
     ;;   (perject--desktop-read name))
@@ -292,6 +308,34 @@ To restore the buffers and frames belonging to no project, run
     ;; TODO: for some reason this does not have any effect on my wm (Kde Plasma)
     (when perject--desktop-restored-frames
       (select-frame (car perject--desktop-restored-frames)))))
+
+
+(defun perject-open-project-in-new-instance (arg)
+  "Ask the user for a project and open a new Emacs instance for it.
+This means that a new Emacs process is created and it restores the buffers and
+frames from the corresponding desktop file.
+When ARG is nil, the user is restricted to non-open projects.
+Otherwise, the user can reopen (reload) a project.
+To restore the buffers and frames belonging to no project, run
+`perject-load-non-project-buffers'."
+  (interactive "P")
+  (let* ((name (perject--get-saved-project
+                "Open project in new Emacs instance: "
+                (and (not arg)
+                     (perject--compose 'not 'perject--is-active-project))
+                "No project to open."))
+         (parameter
+          (concat
+           perject-command-line-option-no-load
+           " --eval '(let ((current-frame (selected-frame))) (perject--desktop-read \""
+           name
+           "\") "
+           (when perject-load-non-project-new-instance
+             "(perject-load-non-project) ")
+           "(unless (eq (length (frame-list)) 1) (delete-frame current-frame)))'")))
+    ;; Start the new Emacs instance, see
+    ;; https://emacs.stackexchange.com/questions/5428/restart-emacs-from-within-emacs.
+    (call-process "sh" nil nil nil "-c" (concat "emacs " parameter " &"))))
 
 (defun perject-close-project (name &optional arg)
   "Close the project named NAME.
@@ -380,7 +424,7 @@ belong to the selected project."
   (when (or (not perject-delete-project-confirmation)
             (y-or-n-p (format "Deleting project '%s'. Are you sure? " name)))
     ;; If the project is active, close it.
-    (when (member name (perject--active-projects))
+    (when (perject--is-active-project name)
       (let ((perject-close-project-save nil)
             (perject-close-project-confirmation nil))
         (perject-close-project name arg)))
@@ -671,6 +715,11 @@ OBJ may be a buffer or a frame."
         ((framep obj) (equal (perject--current-project obj) name))
         (t (error "perject--is-assoc-with: object is not a buffer or a frame."))))
 
+(defun perject--is-active-project (name)
+  "Return a non-nil value if there is a active project called NAME.
+Otherwise, nil is returned."
+  (member name (perject--active-projects)))
+
 (defun perject--get-project-directory (name)
   "Return the directory belonging to a (possibly non-existent) project with name NAME."
   (concat perject-directory name))
@@ -679,38 +728,6 @@ OBJ may be a buffer or a frame."
   "Return the currently open frames which belong to the project named NAME."
   (cl-remove-if-not (lambda (frame) (perject--is-assoc-with frame name)) (frames-on-display-list)))
 
-;; TODO, overworked, now too complicated
-;; (defun perject--kill-assoc-buffers (name &optional predicate message)
-;;   "Kill the buffers associated with the project named NAME.
-;; If PREDICATE is non-nil, it should be a function, which takes a single
-;; argument - a buffer - and returns a non-nil value if the buffer should
-;; be deleted and nil otherwise.
-;; The user is asked for confirmation before the deletion happens,
-;; unless the variable `perject-kill-buffers-confirmation'is nil.
-;; The string used to get confirmation from the user is MESSAGE,
-;; if it is non-nil, and \"Kill all associated buffers? \" otherwise."
-;;   ;; TODO: maybe a message? (but might not be visible for long caus the caller functions
-;;   ;; of this function probably write something directly after the call)
-;;   (when (or (not perject-kill-buffers-confirmation)
-;;             (y-or-n-p (or message "Kill all associated buffers? ")))
-;;     (let ((buffers (if predicate
-;;                            (cl-remove-if-not predicate (perject--get-buffers name))
-;;                          (perject--get-buffers name))))
-;;       (dolist (buffer buffers)
-;;         (kill-buffer buffer)))))
-
-
-;; TODOO still needed?
-(defun perject--kill-assoc-buffers (name)
-  "Kill all buffers associated with the project named NAME.
-Asks for confirmation from the user unless `perject-kill-buffers-confirmation'
-is nil."
-  ;; TODO: maybe a message? (but might not be visible for long caus the caller functions
-  ;; of this function probably write something directly after the call)
-  (when (or (not perject-kill-buffers-confirmation)
-            (y-or-n-p "Kill all associated buffers? "))
-    (dolist (buffer (perject--get-buffers name))
-      (kill-buffer buffer))))
 
 (defun perject--get-buffers-not-assoc ()
   "Return a list of all buffers not associated with any project."
@@ -891,7 +908,7 @@ Similar to the `desktop-read' function."
             (setq perject--desktop-current-project nil)
 
             ;; If no buffers were restored, we need to manually add the new project to `perject-projects'.
-            (unless (or (not name) (member name (perject--active-projects)))
+            (unless (or (not name) (perject--is-active-project name))
               (setq perject-projects (cons (list name) perject-projects)))
             
 	    ;; If it wasn't already, mark it as in-use, to bother other
@@ -1014,6 +1031,8 @@ had aquired it before. "
 (defun perject--init ()
   "Load projects from the last session and set up hooks. 
 The projects are stored in desktop files.
+If Emacs was launched with the command line option
+`perject-command-line-option-no-load', no projects are loaded automatically.
 The variables `perject-load-on-startup' and `perject-load-non-project'
 determine which projects are loaded automatically."
   (let* ((current-frame (selected-frame))
@@ -1027,10 +1046,16 @@ determine which projects are loaded automatically."
                      perject-load-on-startup)))
               (if (and projects (not (car projects)))
                   (cl-set-difference all-projects (cdr projects))
-                projects)))))
+                projects))))
+         (load-non-project perject-load-non-project))
+    (when (member perject-command-line-option-no-load command-line-args)
+      (setq projects-to-load nil
+            load-non-project nil
+            command-line-args
+            (delete perject-command-line-option-no-load command-line-args)))
     (dolist (name projects-to-load)
       (perject--desktop-read name))
-    (when perject-load-non-project
+    (when load-non-project
       (perject-load-non-project))
     ;; There always is the "starting frame", which gets created upon launch.
     ;; We remove it, unless it is the only frame, of course.
@@ -1039,6 +1064,7 @@ determine which projects are loaded automatically."
     ;; Add the hooks specified in `perject-auto-add-in-hooks'.
     (dolist (hook perject-auto-add-in-hooks)
       (add-hook hook 'perject--auto-add-buffer-to-project))))
+
 
 (defun perject--exit ()
   "Save projects to be restored next time and prepare to exit Emacs.
@@ -1094,7 +1120,10 @@ function, i.e. for for which PREDICATE returns a non-nil value.
 NO-CANDIDATE_ERROR is a string used in the `user-error', which is thrown if
 there is no project to select from."
   (perject--get-project-interface
-   prompt (perject--active-projects) predicate (perject--current-project)
+   prompt (perject--active-projects) predicate
+   (when (or (not (functionp predicate))
+             (funcall predicate (perject--current-project)))
+     (perject--current-project))
    (lambda (str)
      (concat str
              (or
@@ -1119,7 +1148,11 @@ function, i.e. for for which PREDICATE returns a non-nil value.
 NO-CANDIDATE_ERROR is a string used in the `user-error', which is thrown if
 there is no project to select from."
   (perject--get-project-interface
-   prompt (perject--saved-projects) predicate (perject--current-project)
+   prompt (perject--saved-projects) predicate
+   ;; Only supply the current project as a default argument, if it passes predicate.
+   (when (or (not (functionp predicate))
+             (funcall predicate (perject--current-project)))
+     (perject--current-project))
    (lambda (str)
      (concat str
              (or
@@ -1149,7 +1182,11 @@ function, i.e. for for which PREDICATE returns a non-nil value.
 NO-CANDIDATE_ERROR is a string used in the `user-error', which is thrown if
 there is no project to select from."
   (perject--get-project-interface
-   prompt (perject--all-projects) predicate (perject--current-project)
+   prompt (perject--all-projects) predicate
+   ;; Only supply the current project as a default argument, if it passes predicate.
+   (when (or (not (functionp predicate))
+             (funcall predicate (perject--current-project)))
+     (perject--current-project))
    (lambda (str)
      (concat str
              (or
@@ -1194,7 +1231,7 @@ However, EMPTY-STRING-FUNCTION could, for example, throw an error."
           (or (if (functionp predicate)
                   (cl-remove-if-not predicate projects)
                 projects)
-              (error no-candidate-error)))
+              (user-error no-candidate-error)))
          (pretty-printer (or pretty-printer #'identity))
          (collection
             (mapcar pretty-printer projects))

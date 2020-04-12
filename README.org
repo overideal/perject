@@ -3,7 +3,7 @@
 This package allows the user to manage multiple projects in a single Emacs instance.
 
 ** The Name
-The name is a play on "per project", since this package manages frames and buffer per project.
+The name is a play on "per project", since this package manages frames and buffers per project.
 Moreover, "per" is a nod to the [[https://github.com/nex3/perspective-el][perspective]] package, which does a similar thing (a comparison follows below).
 
 ** Installation and Setup

@@ -1,3 +1,9 @@
+;; Lexical bindings lead to errors in the desktop functions.
+;; One could refractor them into their own file.
+
+;;
+
+;; ;;; perject.el --- manage your projects  -*- lexical-binding: t; -*-
 ;; This package allows the user to manage multiple projects in a single Emacs instance.
 ;;
 ;; Each project consists of a list of buffers and a list of frames,
@@ -12,13 +18,16 @@
 
 ;; TODO: modifying the buffer list from perject--get-buffers: does this change the metadata?
 
+
+;; TODO: remember previously open projects
+
 ;; auto-add-buffers variable (project . buffer-name)
 
-
 ;; allow restoring of previously opened projects
-
 (require 'desktop)
 (require 'cl-lib) ;; for remove-if-not and some other stuff
+(require 'dash)
+(require 'dash-functional)
 
 
 
@@ -64,7 +73,7 @@ Every project also has a list of associated frames.")
 
 ;; There is no hook that is run after an arbitrary buffer is created.
 ;; See: https://stackoverflow.com/questions/7899949/is-there-an-emacs-hook-that-runs-after-every-buffer-is-created
-(defvar perject-auto-add-in-hooks '(find-file-hook dired-mode-hook)
+(defvar perject-auto-add-in-hooks '(find-file-hook dired-mode-hook help-mode-hook)
   "A list of hooks, in which the current buffer is added to the current project.
 This is used to automatically add newly created buffers to the current project.
 The following hooks could be interesting to the user:
@@ -83,11 +92,15 @@ It can have one of three values:
   "If non-nil, the command `perject-switch-project' will print a message upon completion.")
 
 (defvar perject-add-buffer-message t
-  "If non-nil, the command `perject-add-buffer-to-project' will print a message upon completion.")
+  "If non-nil, a message will be printed when a buffer is successfully added to a project.
+This influences the commands `perject-add-buffer-to-project' and
+`perject-ibuffer-add-to-project'.")
 
 (defvar perject-remove-buffer-message t
-  "If non-nil, the commands `perject-remove-buffer-from-project' and
-`perject-remove-buffer-from-project-and-kill' will print a message upon completion.")
+  "If non-nil, a message will be printed when a buffer is successfully removed from a project.
+This influences the commands `perject-remove-buffer-from-project',
+`perject-remove-buffer-from-project-and-kill' and
+`perject-ibuffer-remove-from-project'.")
 
 (defvar perject-close-project-confirmation nil
   "If non-nil, the user is asked for confirmation before closing a project
@@ -113,7 +126,7 @@ It can have one of three values:
 - 'ask: The user is asked whether to delete the project or keep it.
 - nil: The project is kept.")
 
-(defvar perject-load-on-startup '("lisp")
+(defvar perject-load-on-startup nil
   "The variable controls which projects are automatically loaded at startup.
 It may have one of the following values:
 - nil: Load no project.
@@ -486,13 +499,8 @@ If the buffer is already associated with the project, display an error.
 The command also prints a message when the variable `perject-add-buffer-message'
 is non-nil."
   (interactive "P")
-  (let ((name (or
-               (and (null arg) (perject--current-project))
-               (perject--get-active-project
-                "Add buffer to project: "
-                (perject--compose 'not (apply-partially 'perject--is-assoc-with (current-buffer)))
-                "There is no active project or all projects are already associated with the current buffer."))))
-    (perject--add-buffer-to-project (current-buffer) name perject-add-buffer-message)))
+  (perject--add-buffer-to-project
+   (current-buffer) (and (null arg) (perject--current-project)) perject-add-buffer-message))
 
 (defun perject--auto-add-buffer-to-project ()
   "Silently add the current buffer to the current project.
@@ -500,28 +508,41 @@ Does nothing if they are already associated with each other or
 if there is no current project."
   (let ((buffer (current-buffer))
         (project (perject--current-project)))
-    (unless (perject--is-assoc-with buffer project)
+    (when (and (not (perject--is-assoc-with buffer project))
+               project)
       (perject--add-buffer-to-project buffer project))))
 
+
+;; TODO: add live-p checks to more callers: probably not caus we check in desktop-save
+;; and i'd rather check once then regularly.
 (defun perject--add-buffer-to-project (buffer name &optional print)
   "Add the buffer BUFFER to the project named NAME.
-If NAME is nil, do nothing.
-If no such project exists, create one.
+NAME may be a string or nil, in the latter case, the user is asked for the
+project.
+If no project named NAME exists, create one.
 If the buffer is already associated with the project, display an error.
-If PRINT is non-nil, also display a message."
-  (when name
-    (let* ((project (assoc name perject-projects))
-           (projects (cdr project)))
-      (cond
-       ((and project (member buffer projects))
-        (user-error "Buffer '%s' is already associated with project '%s'."
-                    (buffer-name buffer) name))
-       (project
-        (setcdr project (cons buffer projects)))
-       (t
-        (setq perject-projects (cons (list name buffer) perject-projects))))
-      (when print
-        (message "Added buffer '%s' to project '%s'." (buffer-name buffer) name)))))
+If PRINT is non-nil, also display a message upon completion.
+Note that this function does not check whether BUFFER is still live or has
+already been killed, so caller functions should make sure that the buffer in
+question has not been killed."
+  (let* ((name (or
+                name
+                (perject--get-active-project
+                 "Add buffer to project: "
+                 (perject--compose 'not (apply-partially 'perject--is-assoc-with (current-buffer)))
+                 "There is no active project or all projects are already associated with the current buffer.")))
+         (project (assoc name perject-projects))
+         (projects (cdr project)))
+    (cond
+     ((and project (member buffer projects))
+      (user-error "Buffer '%s' is already associated with project '%s'."
+                  (buffer-name buffer) name))
+     (project
+      (setcdr project (cons buffer projects)))
+     (t
+      (setq perject-projects (cons (list name buffer) perject-projects))))
+    (when print
+      (message "Added buffer '%s' to project '%s'." (buffer-name buffer) name))))
 
 
 (defun perject-remove-buffer-from-project (&optional arg)
@@ -534,13 +555,8 @@ is non-nil.
 The variable `perject-empty-project-delete' determines what happens if the last
 buffer of a project is removed."
   (interactive "P")
-  (let ((name (or
-               (and (null arg) (perject--current-project))
-               (perject--get-active-project
-                "Remove buffer from project: "
-                (apply-partially 'perject--is-assoc-with (current-buffer))
-                "The buffer is currently not associated with any project."))))
-    (perject--remove-buffer-from-project (current-buffer) name perject-remove-buffer-message)))
+  (perject--remove-buffer-from-project
+   (current-buffer) (and (null arg) (perject--current-project)) perject-remove-buffer-message))
 
 (defun perject-remove-buffer-from-project-and-kill (&optional arg)
   "Remove the current buffer from the current project and kill the buffer.
@@ -549,14 +565,23 @@ See the documentation of `perject-remove-buffer-from-project'."
   (perject-remove-buffer-from-project arg)
   (kill-buffer (current-buffer)))
 
+
 (defun perject--remove-buffer-from-project (buffer name &optional print)
   "Remove the buffer BUFFER from the project named NAME.
+NAME may be a string or nil, in the latter case, the user is asked for the
+project.
 If no such project exists or the buffer is not associated with that project,
 throw an error.
-If PRINT is non-nil, also display a message.
+If PRINT is non-nil, also display a message upon completion.
 The variable `perject-empty-project-delete' determines what happens if the last
 buffer of a project is removed."
-  (let* ((project (assoc name perject-projects))
+  (let* ((name (or
+                name
+                (perject--get-active-project
+                 "Remove buffer from project: "
+                 (apply-partially 'perject--is-assoc-with buffer)
+                 "The buffer is currently not associated with any project.")))
+         (project (assoc name perject-projects))
          (projects (cdr project)))
     (unless project
       (error "There is no project named '%s'." name))
@@ -575,13 +600,18 @@ buffer of a project is removed."
         (perject-delete-project name)))))
 
 
-(defun perject-remove-buffer-from-all-projects ()
+(defun perject-remove-buffer-from-all-projects (&optional print)
   "Remove the current buffer from all active projects.
+When PRINT is non-nil, also display a message upon completion.
+In interactive use
 For example, this is called when a buffer is killed."
-  (interactive)
+  (interactive
+   (list t))
   (dolist (name (perject--active-projects))
     (when (perject--is-assoc-with (current-buffer) name)
-      (perject--remove-buffer-from-project (current-buffer) name))))
+      (perject--remove-buffer-from-project (current-buffer) name)))
+  (when print
+    (message "Removed buffer from all projects.")))
 
 ;; TODO
 ;; (defun perject-clear-buffers (name &optional kill)
@@ -708,10 +738,16 @@ If FRAME is nil, use the current frame."
   "Return the list of buffers associated with the project named NAME."
   (alist-get name perject-projects nil nil 'equal))
 
+;; The special case is used in the ibuffer integration.
 (defun perject--is-assoc-with (obj name)
-  "Return t if the object OBJ is associated with the project named NAME and nil otherwise.
-OBJ may be a buffer or a frame."
-  (cond ((bufferp obj) (member obj (perject--get-buffers name)))
+  "Return a non-nil value if object OBJ is associated with the project named NAME.
+Otherwise, nil is returned.
+OBJ may be a buffer or a frame.
+As a special case, if NAME is nil and OBJ is a buffer, the function always
+returns t. This is because a frame without a project is represented with a nil
+value in the corresponding variable, whereas a buffer without a project simply
+has no associated entry in `perject-projects'."
+  (cond ((bufferp obj) (if name (member obj (perject--get-buffers name)) t))
         ((framep obj) (equal (perject--current-project obj) name))
         (t (error "perject--is-assoc-with: object is not a buffer or a frame."))))
 
@@ -1053,8 +1089,12 @@ determine which projects are loaded automatically."
             load-non-project nil
             command-line-args
             (delete perject-command-line-option-no-load command-line-args)))
+    ;; When restoring a frame, Emacs will change which buffer is displayed in the selected frame.
+    ;; Therefore, we always want the "starting frame" (which we use as a temporary frame)
+    ;; to be selected when loading a desktop file.
     (dolist (name projects-to-load)
-      (perject--desktop-read name))
+      (perject--desktop-read name)
+      (select-frame current-frame))
     (when load-non-project
       (perject-load-non-project))
     ;; There always is the "starting frame", which gets created upon launch.
@@ -1311,7 +1351,11 @@ It returns the function that first applies g and then f."
   `(lambda (x) (,f (,g x))))
 
 (eval-after-load 'ivy
-  (load "~/.emacs.d/local-pkg/perject/perject-ivy.el")) ;; how do other packages do this? (looked at ivy, not obvious there)
+  (load "~/.emacs.d/local-pkg/perject/perject-ivy.el")) ;;~/.emacs.d/local-pkg/perject/
+
+(eval-after-load 'ibuffer
+  (load "~/.emacs.d/local-pkg/perject/perject-ibuffer.el"))
+
 
 (provide 'perject)
 ;;; perject.el ends here

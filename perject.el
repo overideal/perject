@@ -16,10 +16,26 @@
 ;; check which buffers are in first and second project:
 ;; (cl-remove-if-not (lambda (buffer) (member buffer (cdadr perject-projects))) (cdar perject-projects))
 
-;; TODO: modifying the buffer list from perject--get-buffers: does this change the metadata?
 
-
-;; TODO: remember previously open projects
+;; TODOS: Search for 'TODOO' for most important feature.
+;; - function that allows the user to manually load projects (from the desktop files)
+;; - corner case: project was not loaded and a project of the same name was created
+;; - integrate ibuffer (filter groups!) add hotkey to assign a project to the buffer
+;; - add hooks
+;; - maybe allow sorting?
+;; - allow splitting off into new emacs processes (in particular need to be able to communicate with it, maybe use the existance of the desktop lock files?)
+;; - see todos in desk.el
+;; - recentf, bookmark support
+;; - allow transfering of buffers/frames?
+;; - can a frame be "copied"?
+;; - check project.el
+;; - maybe: add categories, each category consists of a list of projects.
+;; - potentially check noninteractive variable (see `desktop.el')
+;; - check if desktop-release-lock and desktop-claim-lock are used properly
+;; - it could potentially be wise to have a special desktop file, which is loaded at the end and is used to set up stuff
+;; - modifying the buffer list from perject--get-buffers: does this change the metadata?
+;; - Look through perspective.el and frame-bufs https://github.com/alpaker/Frame-Bufs
+;; - remember previously open projects
 
 ;; auto-add-buffers variable (project . buffer-name)
 
@@ -350,15 +366,18 @@ To restore the buffers and frames belonging to no project, run
     ;; https://emacs.stackexchange.com/questions/5428/restart-emacs-from-within-emacs.
     (call-process "sh" nil nil nil "-c" (concat "emacs " parameter " &"))))
 
+;; Maybe make sure to close ibuffer buffer belonging to the project?
 (defun perject-close-project (name &optional arg)
   "Close the project named NAME.
 Remove the project from the list of active projects and close its frames.
 In interactive use, the user is asked for NAME.
 ARG determines what happens to the buffers belonging to the project.
-If ARG is nil (in interactive use: no prefix argument), no buffers are killed.
-If ARG is '(4) (a single prefix argument), the buffers, which do not belong to
-any other project but the selected one, are killed.
-Otherwise, all buffers belonging to the project are killed.
+If ARG is nil (in interactive use: no prefix argument), the buffers, which do
+not belong to any other project but the selected one, are killed.
+no buffers are killed.
+If ARG is '(4) (a single prefix argument), all buffers belonging to the project
+are killed.
+Otherwise, no buffers are killed.
 Depending on the value of the variable `perject-close-project-save',
 the project is saved to a desktop file or not.
 If the variable `perject-close-project-confirmation' is non-nil,
@@ -387,10 +406,10 @@ to the selected project."
       (setq perject-projects (assoc-delete-all name perject-projects))
       (dolist (frame (perject--get-project-frames name))
         (delete-frame frame))
-      (when (and arg
+      (when (and (or (not arg) (equal arg '(4)))
                  (or (not perject-kill-buffers-confirmation)
                      (y-or-n-p (format "Kill buffers belonging to project '%s'?" name))))
-        (if (equal arg '(4))
+        (if (not arg)
             ;; Determine the buffers, which are not associated with any other project,
             ;; but the selected one.
             (dolist (buffer (cl-intersection buffers (perject--get-buffers-not-assoc)))
@@ -1328,22 +1347,6 @@ Otherwise, throw an error."
 
 
 
-;; TODOS:
-;; - function that allows the user to manually load projects (from the desktop files)
-;; - corner case: project was not loaded and a project of the same name was created
-;; - integrate ibuffer (filter groups!) add hotkey to assign a project to the buffer
-;; - add hooks
-;; - maybe allow sorting?
-;; - allow splitting off into new emacs processes (in particular need to be able to communicate with it, maybe use the existance of the desktop lock files?)
-;; - see todos in desk.el
-;; - recentf, bookmark support
-;; - allow transfering of buffers/frames?
-;; - can a frame be "copied"?
-;; - check project.el
-;; - maybe: add categories, each category consists of a list of projects.
-;; - potentially check noninteractive variable (see `desktop.el')
-;; - check if desktop-release-lock and desktop-claim-lock are used properly
-;; - it could potentially be wise to have a special desktop file, which is loaded at the end and is used to set up stuff
 
 (defun perject--compose (f g)
   "Compose the two functions F and G.

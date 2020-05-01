@@ -36,6 +36,7 @@
 ;; - modifying the buffer list from perject--get-buffers: does this change the metadata?
 ;; - Look through perspective.el and frame-bufs https://github.com/alpaker/Frame-Bufs
 ;; - remember previously open projects
+;; - potentially test how this works in EXWM
 
 ;; auto-add-buffers variable (project . buffer-name)
 
@@ -234,6 +235,23 @@ directory name, so be careful.
 By default, this variable allows '_', '-' and ' '.
 This variable is used in the function `perject--valid-project-name'.")
 
+(defvar perject-after-init-hook nil
+  "Hook run after perject has initialized.
+This means that all the buffers and frames from the projects configured to
+automatically load, have been restored.")
+
+(defvar perject-before-open-hook nil
+  "Hook run before perject has opened a project.
+In particular, the buffers and frames from the project have not yet been
+restored.")
+
+;; Maybe a hook before, what about new frames?
+(defvar perject-after-open-hook nil
+  "Hook run after perject has opened a project.
+In particular, all the buffers and frames from the project have been restored.
+The variable `perject--desktop-restored-frames' is the list of newly created
+frames and might be useful.")
+
 (defvar perject-project-name-hist nil
   "The history of project names.")
 
@@ -329,6 +347,8 @@ To restore the buffers and frames belonging to no project, run
                     (perject--compose 'not 'perject--is-active-project))
                "No project to open."))
         (frame (make-frame)))
+    (run-hooks 'perject-before-open-hook)
+    ;; Maybe try with selected-frame
     ;; (with-selected-frame frame
     ;;   (perject--desktop-read name))
     (select-frame frame)
@@ -336,7 +356,8 @@ To restore the buffers and frames belonging to no project, run
     (delete-frame frame)
     ;; TODO: for some reason this does not have any effect on my wm (Kde Plasma)
     (when perject--desktop-restored-frames
-      (select-frame (car perject--desktop-restored-frames)))))
+      (select-frame (car perject--desktop-restored-frames)))
+    (run-hooks 'perject-after-open-hook)))
 
 
 (defun perject-open-project-in-new-instance (arg)
@@ -1122,7 +1143,8 @@ determine which projects are loaded automatically."
       (delete-frame current-frame))
     ;; Add the hooks specified in `perject-auto-add-in-hooks'.
     (dolist (hook perject-auto-add-in-hooks)
-      (add-hook hook 'perject--auto-add-buffer-to-project))))
+      (add-hook hook 'perject--auto-add-buffer-to-project))
+    (run-hooks 'perject-after-init-hook)))
 
 
 (defun perject--exit ()

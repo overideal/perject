@@ -176,5 +176,5 @@ project."
 
 (defun perject-ibuffer--buffer-name (name)
   "Return the name of the ibuffer buffer showing the buffers of the project named NAME.
-NAME should not be nil."
-  (concat "*Ibuffer-" name "*"))
+NAME may be nil, in which case the default ibuffer name \"*Ibuffer*\" is used."
+  (concat "*Ibuffer" (and name "-") name "*"))

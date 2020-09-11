@@ -1,7 +1,6 @@
 ;; Lexical bindings lead to errors in the desktop functions.
 ;; One could refractor them into their own file.
 
-;;
 
 ;; ;;; perject.el --- manage your projects  -*- lexical-binding: t; -*-
 ;; This package allows the user to manage multiple projects in a single Emacs instance.
@@ -37,6 +36,12 @@
 ;; - Look through perspective.el and frame-bufs https://github.com/alpaker/Frame-Bufs
 ;; - remember previously open projects
 ;; - potentially test how this works in EXWM
+;; - support "archived" projects (i.e. in new directory).
+;; - give each screen the (optional) feature to manage its stack of recent (not recentf) buffers
+;; - i have the following hotkey idea (mostly for exwm):
+;;   for each project one can set hotkey to switch to
+;; maybe have a general save hook instead of lots of other hooks
+;; - move integration for perview from config to extra file
 
 ;; auto-add-buffers variable (project . buffer-name)
 
@@ -235,6 +240,12 @@ directory name, so be careful.
 By default, this variable allows '_', '-' and ' '.
 This variable is used in the function `perject--valid-project-name'.")
 
+(defvar perject-after-desktop-create-buffer-hook nil
+  "Hook run after a buffer has been successfully restored by desktop.
+The functions should take one argument, which is the newly created buffer.
+The return value is ignored.
+This hook should be used with care.")
+
 (defvar perject-after-init-hook nil
   "Hook run after perject has initialized.
 This means that all the buffers and frames from the projects configured to
@@ -251,6 +262,15 @@ restored.")
 In particular, all the buffers and frames from the project have been restored.
 The variable `perject--desktop-restored-frames' is the list of newly created
 frames and might be useful.")
+
+(defvar perject-before-close-hook nil
+  "Hook run before perject closes a project.
+The functions should take one argument, which is the name of the project to be
+closed.")
+
+(defvar perject-after-close-hook nil
+  "Hook run after perject has closed a project.
+The functions should take one argument, which is the name of the closed project. ")
 
 (defvar perject-project-name-hist nil
   "The history of project names.")
@@ -395,14 +415,13 @@ In interactive use, the user is asked for NAME.
 ARG determines what happens to the buffers belonging to the project.
 If ARG is nil (in interactive use: no prefix argument), the buffers, which do
 not belong to any other project but the selected one, are killed.
-no buffers are killed.
 If ARG is '(4) (a single prefix argument), all buffers belonging to the project
 are killed.
 Otherwise, no buffers are killed.
 Depending on the value of the variable `perject-close-project-save',
 the project is saved to a desktop file or not.
 If the variable `perject-close-project-confirmation' is non-nil,
-the user is asked for confirmation before the project is deleted.
+the user is asked for confirmation before the project is closed.
 Whether the user is asked for confirmation an additional time if
 he wants to kill associated buffers, is controlled by the
 variable `perject-kill-buffers-confirmation'.
@@ -418,6 +437,8 @@ to the selected project."
             (y-or-n-p (format "Closing project '%s'. Are you sure? " name)))
     (when (eq (length (perject--get-project-frames name)) (length (frames-on-display-list)))
       (user-error "Can't close a project which belongs to all open frames."))
+    (run-hook-with-args 'perject-before-close-hook name) ;; TODO: temp solution, probably better to overwork hook system. <2020-05-22 Fri>
+    ;; Seems to slow down the kill buffer question??
     (when (or (eq perject-close-project-save t)
               (and (eq perject-close-project-save 'ask)
                    (y-or-n-p (format "Save the project '%s'? " name))))
@@ -436,7 +457,8 @@ to the selected project."
             (dolist (buffer (cl-intersection buffers (perject--get-buffers-not-assoc)))
               (kill-buffer buffer))
           (dolist (buffer buffers)
-            (kill-buffer buffer)))))))
+            (kill-buffer buffer))))
+      (run-hook-with-args 'perject-after-close-hook name))))
 
 
 ;; Maybe allow opening in the same frame? But not sure what to do with the frame parameters.
@@ -643,10 +665,10 @@ buffer of a project is removed."
 (defun perject-remove-buffer-from-all-projects (&optional print)
   "Remove the current buffer from all active projects.
 When PRINT is non-nil, also display a message upon completion.
-In interactive use
+In interactive use, a message is printed unless a prefix-argument is supplied.
 For example, this is called when a buffer is killed."
   (interactive
-   (list t))
+   (list (not current-prefix-arg)))
   (dolist (name (perject--active-projects))
     (when (perject--is-assoc-with (current-buffer) name)
       (perject--remove-buffer-from-project (current-buffer) name)))
@@ -882,7 +904,7 @@ Very similar to the `desktop-save' function."
 	     ";; Created " (current-time-string) "\n"
 	     ";; Desktop file format version " (format "%d" desktop-io-file-version) "\n"
 	     ";; Emacs version " emacs-version "\n")
-	    (save-excursion (run-hooks 'desktop-save-hook))
+	    (save-excursion (run-hooks 'desktop-save-hook)) ;; TODO: maybe make perject-desktop-save-hook
 	    (goto-char (point-max))
 	    (insert "\n;; Global section:\n")
 	    ;; Called here because we save the window/frame state as a global
@@ -1098,10 +1120,13 @@ had aquired it before. "
 ;; TODO: This should probably go into the mode.
 (advice-add 'desktop-create-buffer :filter-return 
               (lambda (buffer)
-                (when (and buffer perject--desktop-current-project)
-                  ;; buffer restored correctly and there is a current project
-                  (perject--add-buffer-to-project buffer perject--desktop-current-project))
-                buffer))
+                (when buffer
+                  (when perject--desktop-current-project
+                    ;; buffer restored correctly and there is a current project
+                    (perject--add-buffer-to-project buffer perject--desktop-current-project))
+                  (run-hook-with-args 'perject-after-desktop-create-buffer-hook buffer)
+                  buffer)))
+
   
   
 (defun perject--init ()
@@ -1134,7 +1159,8 @@ determine which projects are loaded automatically."
     ;; to be selected when loading a desktop file.
     (dolist (name projects-to-load)
       (perject--desktop-read name)
-      (select-frame current-frame))
+      ;; (select-frame current-frame)
+      )
     (when load-non-project
       (perject-load-non-project))
     ;; There always is the "starting frame", which gets created upon launch.

@@ -53,3 +53,4 @@ the buffers from all projects are displayed."
 ;;   funcall-interactively(crux-open-with (4))
 ;;   call-interactively(crux-open-with nil nil)
 ;;   command-execute(crux-open-with)
+(provide 'perject-ivy)

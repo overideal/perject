@@ -42,8 +42,9 @@
 ;;   for each project one can set hotkey to switch to
 ;; maybe have a general save hook instead of lots of other hooks
 ;; - move integration for perview from config to extra file
+;; - auto save?
 
-;; auto-add-buffers variable (project . buffer-name)
+;; auto-add-buffers variable (project . buffer-name) where projects may be a project, a list of projects, t, or a function
 
 ;; allow restoring of previously opened projects
 (require 'desktop)
@@ -95,12 +96,14 @@ Every project also has a list of associated frames.")
 
 ;; There is no hook that is run after an arbitrary buffer is created.
 ;; See: https://stackoverflow.com/questions/7899949/is-there-an-emacs-hook-that-runs-after-every-buffer-is-created
-(defvar perject-auto-add-in-hooks '(find-file-hook dired-mode-hook help-mode-hook)
+;; TODO: check if clone-indirect-buffer-hook works as intended.
+(defvar perject-auto-add-in-hooks '(find-file-hook clone-indirect-buffer-hook dired-mode-hook help-mode-hook org-src-mode-hook)
   "A list of hooks, in which the current buffer is added to the current project.
 This is used to automatically add newly created buffers to the current project.
 The following hooks could be interesting to the user:
-`change-major-mode-hook', `find-file-hook', `buffer-list-update-hook' and many
-mode hooks.
+`change-major-mode-hook', `find-file-hook', `clone-indirect-buffer-hook',
+`buffer-list-update-hook' and many mode hooks.
+Modifying this variable only takes effect after (re)enabling `perject-mode'.
 Internally, the function `perject--auto-add-buffer-to-project' is used.")
 
 (defvar perject-close-project-save 'ask
@@ -1401,11 +1404,13 @@ Otherwise, throw an error."
 It returns the function that first applies g and then f."
   `(lambda (x) (,f (,g x))))
 
-(eval-after-load 'ivy
-  (load "~/.emacs.d/local-pkg/perject/perject-ivy.el")) ;;~/.emacs.d/local-pkg/perject/
 
-(eval-after-load 'ibuffer
-  (load "~/.emacs.d/local-pkg/perject/perject-ibuffer.el"))
+;; TODO: Make this indpenedent of the directory!
+;; (with-eval-after-load 'ivy
+;;   (require 'perject-ivy)) ;; "~/m/3/1/dev/elisp/emacs-pkg/perject/perject-ivy.el"
+
+;; (with-eval-after-load 'ibuffer
+;;   (require 'perject-ibuffer)) ;; "~/m/2/1/dev/elisp/emacs-pkg/perject/perject-ibuffer.el"
 
 
 (provide 'perject)

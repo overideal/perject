@@ -82,7 +82,7 @@ Defined bindings (in `perject-ibuffer-mode-map'):
 
 
 
-(defun perject-ibuffer-update (arg &optional silent)
+(defun perject-ibuffer-update (&optional arg silent)
   "Regenerate the list of all buffers while restricting to the current project.
 If ARG is nil (in interactive use, if no prefix argument is supplied) only the
 buffers are displayed that belong to the current project, if existent.
@@ -141,6 +141,7 @@ project."
       (perject--add-buffer-to-project
        (ibuffer-current-buffer t) name perject-add-buffer-message))))
 
+;; TODO: Maybe add an option to customize how many messages are printed?
 (defun perject-ibuffer-remove-from-project (arg)
   "Remove the marked buffers or the buffer at point from the current project.
 If ARG is non-nil (in interactive use, if a prefix argument is supplied) or if
@@ -170,7 +171,7 @@ project."
              (message "Removed buffer '%s' from project '%s'." (car buffers-removed) name))
             (_
              (message "Removed the following buffers from project '%s': %s"
-                      name (car (append (-interpose ", " buffers-removed)))))))
+                      name (apply #'concat (append (-interpose ", " buffers-removed)))))))
       (perject--remove-buffer-from-project
        (ibuffer-current-buffer t) name perject-add-buffer-message))))
 
@@ -178,3 +179,5 @@ project."
   "Return the name of the ibuffer buffer showing the buffers of the project named NAME.
 NAME may be nil, in which case the default ibuffer name \"*Ibuffer*\" is used."
   (concat "*Ibuffer" (and name "-") name "*"))
+
+(provide 'perject-ibuffer)

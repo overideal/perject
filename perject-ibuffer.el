@@ -1,183 +1,153 @@
+;;; perject-ibuffer.el --- Ibuffer integration for Perject -*- lexical-binding: t -*-
+
+
+;;; Commentary:
+
 ;; Integrate perject with ibuffer.
+;; This allows the user to filter by project and to add to and remove buffers
+;; from projects in the ibuffer interface.
 
-;; (require 'perject) ;; leads to error.
+
+;;;  Code
+
+(require 'perject)
 (require 'ibuffer)
-
-;; (defvar perject-ibuffer--predicates nil
-;;   "Internal variable used to store the value of `ibuffer-maybe-show-predicates'.")
-
-;; Frame parameter perject-ibuffer
-;;   "Internal variable to restore the proper set of buffers when refreshing ibuffer.
-;; If the currently shown buffers are restricted to a project, the value of this
-;; variable should be the name of that project.
-;; Otherwise, this variable should be 0."
+(require 'ibuf-ext)
 
 
-;;; Keymap
-(defvar perject-ibuffer-mode-map
-  (let ((map (make-sparse-keymap)))
-    (define-key map [remap ibuffer-update] 'perject-ibuffer-update)
-    map)
-  "Keymap used when `perject-ibuffer-mode' is active.")
+;;;; Customization
 
-(define-minor-mode perject-ibuffer-mode
-  "Toggle perject-ibuffer minor mode on or off.
-Turn the mode on if ARG is positive and off otherwise.
-The mode integrates ibuffer with perview, i.e. the displayed buffers
-are those which belong to the current project.
+(defcustom perject-ibuffer-buffer-to-project-message t
+  "If non-nil, print a message when adding or removing a buffer from a project in `ibuffer'.
+This influences the commands `perject-ibuffer-add-to-project' and
+`perject-ibuffer-remove-from-project'."
+  :type '(choice
+		  (const :tag "Print message" t)
+		  (const :tag "Don't print message" nil)))
 
-Defined bindings (in `perject-ibuffer-mode-map'):
-\\{perject-ibuffer-mode-map}."
-  :group 'perject
-  :keymap perject-ibuffer-mode-map
-  (unless (eq major-mode 'ibuffer-mode)
-    (user-error "`perject-ibuffer-mode' only works with `ibuffer-mode'."))
-  (if perject-ibuffer-mode
-      (let* ((name (perject--current-project))
-             (buffer (get-buffer (perject-ibuffer--buffer-name name))))
-        (if buffer
-            (switch-to-buffer buffer)
-          (rename-buffer (perject-ibuffer--buffer-name name)))
-        (perject-ibuffer-update nil))
-    (ibuffer-update nil)
-    ;; Kill all other ibuffer buffers.
-    (dolist (buffer (buffer-list))
-      (when (and (eq (with-current-buffer buffer
-                       major-mode)
-                     'ibuffer-mode)
-                 (not (eq buffer (current-buffer))))
-        (kill-buffer buffer)))
-    (rename-buffer "*Ibuffer*")))
-
-  ;; previously had this in the minor mode:
-  ;; (if perject-ibuffer-mode
-  ;;     (let ((name (perject--current-project)))
-  ;;       (when name
-  ;;         (setq perject-ibuffer--predicates
-  ;;               (copy-sequence ibuffer-maybe-show-predicates)
-  ;;               perject-ibuffer--predicates
-  ;;               (cons (-compose #'not (-rpartial 'perject--is-assoc-with name))
-  ;;                     ibuffer-maybe-show-predicates))
-  ;;         (perject-ibuffer-update nil)))
-  ;;   (when perject-ibuffer--predicates
-  ;;     (setq ibuffer-maybe-show-predicates perject-ibuffer--predicates
-  ;;           perject-ibuffer--predicates nil)))
-;; Inspired by the implementation of ibuffer support in perspective.el.
-;; (defun perject-ibuffer (arg)
-;;   "Call ibuffer, but restrict it to the current project.
-;; If ARG is non-nil (in interactive use, if a prefix argument is supplied) or if
-;; the current frame is not associated with any project, the buffers from all
-;; projects are shown."
-;;   (interactive "P")
-;;   (let ((name (perject--current-project)))
-;;     (if (or arg (not name))
-;;         (ibuffer)
-;;       (let ((ibuffer-maybe-show-predicates
-;;              (cons (-compose #'not (-rpartial 'perject--is-assoc-with name))
-;;                    ibuffer-maybe-show-predicates)))
-;;         ;; (lambda (buffer) (not (perject--is-assoc-with buffer name)))
-;;         (ibuffer)
-;;         (local-set-key [remap ibuffer-update] 'perject-ibuffer-update)))))
+(defcustom perject-ibuffer-update-after-buffer-to-project t
+  "If non-nil, update the ibuffer list after adding or removing a buffer from a project in `ibuffer'.
+This influences the commands `perject-ibuffer-add-to-project' and
+`perject-ibuffer-remove-from-project'."
+  :type '(choice
+		  (const :tag "Update IBuffer" t)
+		  (const :tag "Don't update IBuffer" nil)))
 
 
+;;;; Functions
+
+;;;###autoload (autoload 'ibuffer-filter-by-name "ibuf-ext")
+(define-ibuffer-filter project
+	"Limit current view to buffers belonging to project QUALIFIER.
+If QUALIFIER is nil, only show the anonymous buffers; i.e. those not
+belonging to any project."
+  (:description
+   "project name"
+   :reader
+   (perject--get-project-name "Filter by project name: "
+						 'active nil t nil
+						 "No project active" #'ignore))
+  (if qualifier
+	  (perject--is-assoc-with buf qualifier)
+	(perject--is-buffer-anonymous buf)))
 
 
-(defun perject-ibuffer-update (&optional arg silent)
-  "Regenerate the list of all buffers while restricting to the current project.
-If ARG is nil (in interactive use, if no prefix argument is supplied) only the
-buffers are displayed that belong to the current project, if existent.
-If ARG is equal to '(4) (in interactive use, if a single prefix argument is
-supplied) or if the current frame is not associated with any project, the
-buffers from all projects are shown.
-Otherwise, toggle whether buffers that match `ibuffer-maybe-show-predicates'
-should be displayed.
-If optional arg SILENT is non-nil, do not display progress messages.
-This is basically a small wrapper around `ibuffer-update'."
-  (interactive "P")
-  (let ((name (perject--current-project)))
-    (if (or (equal arg '(4)) (not name))
-        (ibuffer-update nil silent)
-      (let ((ibuffer-maybe-show-predicates
-             (cons (-compose #'not (-rpartial 'perject--is-assoc-with name))
-                   ibuffer-maybe-show-predicates)))
-            ;; (buffer (get-buffer (perject-ibuffer--buffer-name name)))
-        ;; (if buffer
-        ;;     (switch-to-buffer buffer)
-        ;;   (rename-buffer (perject-ibuffer--buffer-name name)))
-        (ibuffer-update arg silent)))))
+(defun perject-ibuffer-enable-filter-by-project (&optional name)
+  "Enable the filter `ibuffer-filter-by-project' for the project named NAME.
+This also disables all previous filters by project.
+This means that only the buffers matching the current project are shown. 
+If nil, NAME defaults to the current project. If there is no current project,
+ensure that there is no filter by project."
+  (let ((name (or name (perject--current-project)))
+		(current-filter (alist-get 'project ibuffer-filtering-qualifiers)))
+	(cond
+	 ((and name current-filter)
+	  (unless (string-equal current-filter name)
+		(setf (alist-get 'project ibuffer-filtering-qualifiers) name)
+		(ibuffer-update nil t)))
+	 (name
+	  (ibuffer-filter-by-project name))
+	 (current-filter
+	  (setq ibuffer-filtering-qualifiers
+			(assoc-delete-all 'project ibuffer-filtering-qualifiers))
+	  (ibuffer-update nil t)))))
 
-(defun perject-ibuffer-add-to-project (arg)
-  "Add the marked buffers or the buffer at point to the current project.
-If ARG is non-nil (in interactive use, if a prefix argument is supplied) or if
-the current frame is not associated with any project, ask the user for the
-project."
-  (interactive "P")
-  (let ((name (and (not arg) (perject--current-project)))
+(defun perject-ibuffer-add-to-project (name)
+  "Add the marked buffers or the buffer at point to the project named NAME.
+If NAME is nil, ask the user for the project.
+In interactive use, NAME defaults to the current project. If the current frame
+is not associated with any project or if a prefix argument is supplied, let the
+user choose the project."
+  (interactive (list (and (not current-prefix-arg) (perject--current-project))))
+  (let ((name (or
+               name
+               (perject--get-project-name
+                "Add marked buffers to project: "
+                'active nil t nil "There currently is no active project"
+				"No project specified")))
         (buffers (ibuffer-marked-buffer-names)))
     (if buffers
-        (let ((buffers-added nil)
-              (name (or
-                     name
-                     (perject--get-active-project
-                      "Add marked buffers to project: "
-                      nil
-                      "There currently is no active project."))))
+        (let ((buffers-added nil))
           (dolist (buffer-name buffers)
             (let ((buffer (get-buffer buffer-name)))
               (when (and (not (perject--is-assoc-with buffer name))
                          (buffer-live-p buffer))
-                (perject--add-buffer-to-project buffer name nil)
+                (perject-add-buffer-to-project buffer name nil)
                 (push buffer-name buffers-added))))
-          (perject-ibuffer-update)
           (pcase buffers-added
             ('nil
              (message "No buffers added. All selected buffers are already associated with the project '%s'."
                       name))
-            (`(,_)
-             (message "Added buffer '%s' to project '%s'." (car buffers-added) name))
+            (`(,buffer)
+             (message "Added buffer '%s' to project '%s'." buffer name))
             (_
-             (message "Added the following buffers to project '%s': %s"
-                      name (car (append (-interpose ", " buffers-added)))))))
-      (perject--add-buffer-to-project
-       (ibuffer-current-buffer t) name perject-add-buffer-message))))
+             (message "Added the following buffers to project '%s': %s."
+                      name (string-join buffers-added ", ")))))
+      (perject-add-buffer-to-project
+       (ibuffer-current-buffer t) name perject-ibuffer-buffer-to-project-message))
+	(when perject-ibuffer-update-after-buffer-to-project
+	  (ibuffer-update nil t))))
 
-;; TODO: Maybe add an option to customize how many messages are printed?
-(defun perject-ibuffer-remove-from-project (arg)
-  "Remove the marked buffers or the buffer at point from the current project.
-If ARG is non-nil (in interactive use, if a prefix argument is supplied) or if
-the current frame is not associated with any project, ask the user for the
-project."
-  (interactive "P")
-  (let ((name (and (not arg) (perject--current-project)))
+(defun perject-ibuffer-remove-from-project (name)
+  "Remove the marked buffers or the buffer at point from the project named NAME.
+If NAME is nil, ask the user for the project.
+In interactive use, NAME defaults to the current project. If the current frame
+is not associated with any project or if a prefix argument is supplied, let the
+user choose the project."
+  (interactive (list (and (not current-prefix-arg) (perject--current-project))))
+  (let ((name (or
+               name
+               (perject--get-project-name
+                "Remove marked buffers from project: "
+                'active nil t nil "There currently is no active project"
+				"No project specified")))
         (buffers (ibuffer-marked-buffer-names)))
     (if buffers
-        (let ((buffers-removed nil)
-              (name (or
-                     name
-                     (perject--get-active-project
-                      "Remove marked buffers from project: "
-                      nil
-                      "There currently is no active project."))))
+        (let ((buffers-removed nil))
           (dolist (buffer-name buffers)
             (let ((buffer (get-buffer buffer-name)))
               (when (perject--is-assoc-with buffer name)
-                (perject--remove-buffer-from-project buffer name nil)
+                (perject-remove-buffer-from-project buffer name nil)
                 (push buffer-name buffers-removed))))
           (pcase buffers-removed
             ('nil
              (message "No buffers removed. None of the selected buffers were associated with the project '%s'."
                       name))
-            (`(,_)
-             (message "Removed buffer '%s' from project '%s'." (car buffers-removed) name))
+            (`(,buffer)
+             (message "Removed buffer '%s' from project '%s'." buffer name))
             (_
-             (message "Removed the following buffers from project '%s': %s"
-                      name (apply #'concat (append (-interpose ", " buffers-removed)))))))
-      (perject--remove-buffer-from-project
-       (ibuffer-current-buffer t) name perject-add-buffer-message))))
+             (message "Removed the following buffers from project '%s': %s."
+                      name (string-join buffers-removed ", ")))))
+      (perject-remove-buffer-from-project
+       (ibuffer-current-buffer t) name perject-ibuffer-buffer-to-project-message))
+	(when perject-ibuffer-update-after-buffer-to-project
+	  (ibuffer-update nil t))))
 
-(defun perject-ibuffer--buffer-name (name)
-  "Return the name of the ibuffer buffer showing the buffers of the project named NAME.
-NAME may be nil, in which case the default ibuffer name \"*Ibuffer*\" is used."
-  (concat "*Ibuffer" (and name "-") name "*"))
+(defun perject-ibuffer-print-buffer-projects ()
+  "Print the names of the projects with which the buffer at point is associated."
+  (interactive)
+  (perject-print-buffer-projects (ibuffer-current-buffer t)))
+
 
 (provide 'perject-ibuffer)
+;;; perject-ibuffer.el ends here

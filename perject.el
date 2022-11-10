@@ -9,6 +9,7 @@
 ;; Homepage: https://gitlab.com/overideal/perject
 
 ;;; Commentary:
+
 ;; This package allows the user to manage multiple projects in a single Emacs instance.
 ;; A project consists of a list of buffers and a list of frames, which have
 ;; corresponding window configurations.
@@ -16,7 +17,7 @@
 ;; automatically saved and restored upon restarting Emacs.
 
 
-;;; Code
+;;; Code:
 
 (require 'desktop)
 (require 'cl-lib)
@@ -527,16 +528,22 @@ command line option `perject-command-line-option' takes priority."
 					(car projects))
             command-line-args
 			(append (seq-take command-line-args index) (seq-drop command-line-args (+ index 2)))))
-	;; At the beginning, there is a single frame; namely the selected "starting frame".
-	;; We may reuse this frame for one of our projects, but as soon as it is "claimed",
-	;; we cannot use it again. This behavior is obtained by setting `perject--desktop-reuse-frames'.
+	;; At the beginning, there is a single frame; namely the selected "starting
+	;; frame".
+	;; We may reuse this frame for one of our projects, but as soon as it is
+	;; "claimed" (or somehow deleted), we cannot use it again. This behavior is
+	;; obtained by setting `perject--desktop-reuse-frames'.
 	(let ((perject-switch-to-new-frame nil)
 		  (perject--desktop-reuse-frames (lambda (frame)
 										   (and
 											(eq frame current-frame)
-											(not (perject--current-project frame))))))
+											(not (perject--current-project frame)))))
+		  starting-frame-claimed)
       (dolist (name projects-to-load)
-		(if (member current-frame perject--desktop-restored-frames)
+		(when (or (member current-frame perject--desktop-restored-frames)
+				  (not (frame-live-p current-frame)))
+		  (setq starting-frame-claimed t))
+		(if starting-frame-claimed
 			;; Starting frame was claimed.
 			(let (perject-before-open-hook perject-after-open-hook)
 			  (perject-open-project name))
@@ -586,7 +593,7 @@ This function is called by `perject-mode' before exiting Emacs (using
 ;; associated with project" errors, if the project in which this function is
 ;; called is already associated with the buffer.
 (defun perject-open-project (name)
-  "Open the project named NAME and switch to one of its corresponding frames.
+  "Open the project named NAME and switch to one of its corresponding frames (if existent).
 This means that all its buffers are restored and frames are opened from the
 corresponding desktop file. Whether the frame switch happens depends on the value
 of `perject-switch-to-new-frame'.
@@ -619,6 +626,7 @@ buffer to a project have no effect while the desktop is being loaded."
 		;; not be able to change the window configuration of the current frame.
 		(let ((wc (current-window-configuration)))
 		  (add-hook 'desktop-after-read-hook (lambda () (set-window-configuration wc t)))
+		  ;; TODO: Add catch here?
 		  (perject-desktop-load name)
 		  (remove-hook 'desktop-after-read-hook (lambda () (set-window-configuration wc t))))
 		(dolist (hook perject-auto-add-hooks)
@@ -918,7 +926,8 @@ buffer of a project is removed."
 				   (format
 					"Project '%s' is not associated with any buffers anymore. Delete it?"
 					name)))
-			 (and (functionp perject-empty-project-delete (funcall perject-empty-project-delete name)))))
+			 (and (functionp perject-empty-project-delete)
+				  (funcall perject-empty-project-delete name))))
       (let ((perject-delete-project-confirmation nil))
         (perject-delete-project name)))))
 
@@ -1284,7 +1293,7 @@ This function also adds NAME to the alist of active projects `perject-projects'.
   (let ((perject--desktop-current-project name)
 		(previous-frames (frame-list))
 		(desktop-load-locked-desktop t)
-		(no-msg no-msg)
+		;; (no-msg no-msg)
 		;; Suppress messages from `desktop-read'.
 		(inhibit-message t)
 		(message-log-max nil))

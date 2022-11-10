@@ -4,7 +4,6 @@ This package allows the user to manage multiple projects in a single Emacs insta
 
 ** The Name
 The name is a play on "per project", since this package manages frames and buffers per project.
-Moreover, "per" is a nod to the [[https://github.com/nex3/perspective-el][perspective]] package, which does a similar thing (a comparison follows below).
 
 ** Installation and Setup
 Currently not on [[https://melpa.org/][melpa]].
@@ -17,8 +16,44 @@ With [[https://github.com/jwiegley/use-package][use-package]], the code looks as
   :config (perject-mode 1))
 #+END_SRC
 
-Since *perject* makes heavy use of the built-in *desktop* package, make sure to not change any settings
-regarding desktop in your config file.
+If you use [[https://github.com/raxod502/straight.el][straight]], you can simplify this to...
 
 ** Setup
 TODO
+** Connection to desktop.el
+As mentioned, /perject/ uses the built-in package /desktop.el/ under the hood.
+
+It provides an extended interface to this package.
+As such, the user should not manually call commands like =desktop-save= and =desktop-read=.
+Instead, use commands like =perject-save-project= and =perject-open-project=.
+
+Furthermore, to avoid unexpected behavior, the user should ensure that the hooks of /desktop.el/
+are not modified in the config file.
+The variables of /desktop.el/ may be altered, but some have no effect on /perject/ since they are overwritten.
+The variables that have no effect include:
+- =desktop-dirname=
+- =desktop-restore-reuses-frames=
+- =desktop-load-locked-desktop=
+- =desktop-buffers-not-to-save-function= (replaced by =perject-buffers-not-to-save-function=)
+
+** Integration with other Packages
+In =desktop-after-read-hook= and =desktop-save-hook= the functions can access =perject--desktop-current-project=
+to obtain the current project name (which might be nil).
+** Issues
+Whether /perject/ switches to a newly created frame is controlled by the variable =perject-switch-to-new-frame=.
+However, depending on the window manager, there might be some weird behaviors with Emacs not focusing the frame properly.
+I did my testing with /KDE Plasma/ and used the elisp functions =select-frame= and =select-frame-set-input-focus= and depending
+on the value of the above variable, the focus might be correct or not. With this I mean that e.g. when opening a new project,
+the old frame stays at the "front" (my Emacs is always maximized) but the focus is on the newly restored frame "behind" it.
+It seems to me that this is a limitation that has to be fixed by customizing the window manager's settings  and there is no
+Emacs function that I can use to universally fix this. If anyone has a suggestion, feel free to open an issue.
+* TODO Talk about perject-consult and perject-ibuffer; Find a good place for perject-ivy
+* Testing functions (working)
+- perject-delete-project
+- All functions from "Managing frames"
+* TODO Tests
+- save-on-exit and load-at-startup
+- test the customize interface
+- test perject-buffers-not-to-save-function
+* Explain how to add e.g. scratch buffer to every project
+* Write about support e.g. macos, windows, exwm,

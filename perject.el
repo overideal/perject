@@ -20,10 +20,11 @@
 
 ;;; Code:
 
-(require 'desktop)
 (require 'cl-lib)
 (require 'seq)
 (require 'dash)
+(require 'transient)
+(require 'desktop)
 
 
 ;;;; Constants
@@ -49,14 +50,31 @@ Write '--perject \"\"' if no projects should be opened.")
   "The face used for displaying the main annotation when selecting a project.")
 
 (defface perject-project-annotator-buffers '((t :inherit completions-annotations))
-  "The face used for displaying the number of buffers when selecting a project.")
+  "The face used for displaying the number of buffers when selecting a collection or project.")
 
 (defface perject-project-annotator-frames '((t :inherit completions-annotations))
-  "The face used for displaying the number of frames when selecting a project.")
+  "The face used for displaying the number of frames when selecting a collection or project.")
 
 (defcustom perject-directory (concat user-emacs-directory "perject/")
   "The directory used by perject to save its data (in particular the desktop files)."
   :type 'directory)
+
+(defface perject-sort-collections-current '((t :inherit font-lock-keyword-face))
+  "The face used for displaying the name of the current collection when ordering collections.
+This influences the command `perject-sort-collections'.")
+
+(defface perject-sort-collections-other '((t :inherit font-lock-comment-face))
+  "The face used for displaying the name of the non-current collection when ordering collections.
+This influences the command `perject-sort-collections'.")
+
+(defface perject-sort-projects-current '((t :inherit font-lock-keyword-face))
+  "The face used for displaying the name of the current project when ordering projects.
+This influences the command `perject-sort-projects'.")
+
+(defface perject-sort-projects-other '((t :inherit font-lock-comment-face))
+  "The face used for displaying the name of the non-current project when ordering projects.
+This influences the command `perject-sort-projects'.")
+
 
 (defcustom perject-load-at-startup nil
   "The variable controls which collections are automatically loaded at startup.
@@ -75,12 +93,11 @@ It may have one of the following values:
   collections. The function should return a list of collection names to be
   loaded. It could for example ask the user.
 
-The order in which the projects are loaded is determined as follows: In the list
-or function case, the projects are loaded \"from left to right\".
-If the value is 'previous, the recently opened collections are restored later, so
-that the most recent project will be restored last. For convenience, perject
-provides the function `perject-sort-projects' in case the user wants to manually
-change the \"recency\" of the projects."
+The order in which the collections are loaded is determined as follows: In the list
+or function case, the collections are loaded \"from left to right\".
+If the value is 'previous, use the current order of the collections, which by default
+goes from \"older\" to \"newer\". Using the command `perject-sort-collections',
+they can be manually sorted, which will be remembered over restarts of Emacs."
   :type '(choice
 		  (const :tag "Load no collection" nil)
 		  (const :tag "Load all collections" all)
@@ -177,14 +194,6 @@ those buffers."
 		  (const :tag "Never save the collection" nil)
 		  (function :tag "Custom function")))
 
-(defcustom perject-frame-to-project-message t
-  "If non-nil, print a message when adding or removing a frame from a collection.
-This influences the commands `perject-add-frame-to-collection' and
-`perject-remove-frame-from-collection'."
-  :type '(choice
-		  (const :tag "Print message" t)
-		  (const :tag "Don't print message" nil)))
-
 (defcustom perject-switch-to-new-frame '(open create)
   "Whether to switch to a newly created frame.
 The value of this variable is a list which may contain any of the following
@@ -199,14 +208,25 @@ newly created frame."
 		  (const :tag "Switch after creating a new project using `perject-open-collection'" create)
 		  (const :tag "Switch after reloading a project using `perject-reload-collection'" reload)))
 
-(defcustom perject-buffer-to-project-message t
-  "If non-nil, print a message when adding or removing a buffer from a project.
-This influences the commands `perject-add-buffer-to-project',
-`perject-remove-buffer-from-project', and
-`perject-remove-buffer-from-project-and-kill'."
-  :type '(choice
-		  (const :tag "Print message" t)
-		  (const :tag "Don't print message" nil)))
+(defcustom perject-messages
+  '(add-buffer remove-buffer switch-collection next-project previous-project)
+  "Whether to print informative messages when performing certain actions.
+The value of this variable is a list which may contain any of the following
+symbols, whose presence in the list leads to a message being printed in the
+indicated command:
+- 'add-buffer: `perject-add-buffer-to-project',
+- 'remove-buffer: `perject-remove-buffer-from-project',
+- 'switch-collection: `perject-switch-collection',
+- 'switch-project: `perject-switch-project',
+- 'next-project: `perject-switch-to-next-project',
+- 'previous-project: `perject-switch-to-previous-project'."
+  :type '(set
+		  (const :tag "`perject-add-buffer-to-project'" add-buffer)
+		  (const :tag "`perject-remove-buffer-from-project'" remove-buffer)
+		  (const :tag "`perject-switch-collection'" switch-collection)
+		  (const :tag "`perject-switch-project'" switch-project)
+		  (const :tag "`perject-switch-to-next-project'" next-project)
+		  (const :tag "`perject-switch-to-previous-project'." previous-project)))
 
 (defcustom perject-confirmation '(delete delete-project)
   "Whether to ask for confirmation before performing certain actions.
@@ -438,6 +458,12 @@ remaining entries are the corresponding project names.")
 (defvar perject-project-name-history nil
   "The history of project names.")
 
+(defvar perject--sort-collections-index 0
+  "Index of the current collection in `perject-sort-collections'.")
+
+(defvar perject--sort-projects-index 0
+  "Index of the current project in `perject-sort-projects'.")
+
 ;; I am surprised such a variable does not already exist in `frameset.el'
 (defvar perject--desktop-restored-frames nil
   "The list of the frames which were restored for the most recent project.
@@ -602,11 +628,61 @@ This function is called by `perject-mode' before exiting Emacs (using
 `kill-emacs-hook')."
   (perject-save-collections 'exit t t)
   ;; Reverse the list of active collections, so that the newest collection is last.
-  (setq perject--previous-collections
-		(nreverse (perject--list-collections 'active))))
+  (setq perject--previous-collections (perject--list-collections 'active)))
 
 
-;;;; Opening Projects
+;;;; Opening and Closing Collections
+
+(defun perject-switch-collection (name &optional frame msg)
+  "Switch the collection of the frame FRAME to the collection named NAME.
+If FRAME is nil, it defaults to the current frame and if NAME is nil, remove the
+current collection (if any) from the frame, so that it does not belong to any
+collection anymore. If MSG is non-nil, also print a message.
+In interactive use, the current frame is used, the user is asked for NAME
+and MSG is determined by the variable `perject-messages'."
+  (interactive
+   (list
+	(perject--get-collection-name
+	 "Add current frame to collection: " 'active
+	 (-compose #'not (apply-partially #'perject--is-assoc-with (selected-frame)))
+	 t nil "No collection to add frame to" #'ignore)
+	(selected-frame)
+	(member 'switch-collection perject-messages)))
+  (let ((frame (or frame (selected-frame)))
+		(old-name (car (perject--current frame))))
+	(perject--set-current name frame)
+	(when msg
+	  (let ((is-current (equal frame (selected-frame))))
+	  (if name
+		  (message "Added %sframe to collection '%s'."
+				   (if is-current "current " "") name)
+		(if old-name
+			(message "Removed %sframe from collection '%s'."
+					 (if is-current "current " "") old-name)
+		  (message "%s is not associated with a collection."
+				   (if is-current "Current frame" "Frame"))))))))
+
+(defun perject-create-new-frame (proj &optional no-select)
+  "Create a new frame for PROJ and select it, unless NO-SELECT is non-nil.
+PROJ may be a collection name or a dotted pair with car a collection and cdr a
+project name.
+In interactive use, PROJ defaults to the current collection. If a single prefix
+argument is supplied, the user may select PROJ from the projects of the current
+collection. In any other case, the user may select from all projects."
+  (interactive
+   (list
+    (if (and (not current-prefix-arg)
+             (perject--current))
+		(car (perject--current))
+	  (perject--get-project-name "Create new frame for project: "
+								 (if (equal current-prefix-arg '(4)) 'current 'all)
+								 nil t (perject--current)
+								 "No project to create a frame for"
+								 "No project specified"))))
+  (let ((frame (make-frame)))
+	(with-selected-frame frame
+	  (perject--set-current proj))
+	(unless no-select (select-frame-set-input-focus frame))))
 
 ;; The `perject-open-collection' command is very subtle, due to the following:
 ;; When loading a desktop, `desktop.el' selects the loaded buffers in the
@@ -671,7 +747,9 @@ buffer to a project have no effect while the desktop is being loaded."
 	(make-directory (perject--get-collection-dir name) t)
 	;; Create a desktop file.
 	(perject-save-collection name)
-	(setq perject-collections (cons (list name) perject-collections))
+	;; The order of the collections matters and we want the new collection to
+	;; be at the rightmost position.
+	(setq perject-collections (append perject-collections (list (list name))))
 	(perject-create-new-frame name (not (memq 'create perject-switch-to-new-frame)))
 	(run-hook-with-args 'perject-after-create-hook name)))
 
@@ -797,72 +875,6 @@ This function runs the hooks `perject-before-reload-hook' and
 	(run-hook-with-args 'perject-after-reload-hook name)))
 
 
-;;;; Managing Frames
-
-(defun perject-add-frame-to-collection (name &optional frame msg)
-  "Switch the collection of the frame FRAME to the collection named NAME.
-If FRAME is nil, it defaults to the current frame. This is also the case in
-interactive use, where the user is asked for NAME. If MSG is non-nil, also print
-a message. In interactive use, this is controlled by the variable
-`perject-frame-to-project-message'.
-Note that a frame can just belong to a single collection, so if the frame was
-previously assigned to another collection, it changes ownership."
-  (interactive
-   (list
-    (perject--get-collection-name "Add current frame to collection: " 'active
-					   (-compose #'not (apply-partially #'perject--is-assoc-with (selected-frame)))
-					   t nil "No collection to add frame to" "No collection specified")
-    (selected-frame)
-	perject-frame-to-project-message))
-  (perject--set-current name frame)
-  (when msg
-	(message "Added %sframe to project '%s'."
-			 (if (or (not name) (equal frame (selected-frame)))
-				 "current "
-			   "")
-			 name)))
-
-(defun perject-remove-frame-from-collection (&optional frame msg)
-  "Remove the current project from the frame FRAME.
-This means that afterwards, the frame is no longer associated with any project.
-If FRAME was not associated with any project to begin with, do nothing. If FRAME
-is nil, it defaults to the current frame, which also happens in interactive use.
-If MSG is non-nil, also print a message. In interactive use, this is controlled
-by the variable `perject-frame-to-project-message'."
-  (interactive (list (selected-frame) perject-frame-to-project-message))
-  (let ((name (perject--current frame)))
-	(when name
-	  (perject--set-current nil frame)
-	  (when msg
-		(message "Removed %sframe from project '%s'."
-				 (if (or (not name) (equal frame (selected-frame)))
-					 "current "
-				   "")
-				 name)))))
-
-(defun perject-create-new-frame (proj &optional no-select)
-  "Create a new frame for PROJ and select it, unless NO-SELECT is non-nil.
-PROJ may be a collection name or a dotted pair with car a collection and cdr a
-project name.
-In interactive use, PROJ defaults to the current collection. If a single prefix
-argument is supplied, the user may select PROJ from the projects of the current
-collection. In any other case, the user may select from all projects."
-  (interactive
-   (list
-    (if (and (not current-prefix-arg)
-             (perject--current))
-		(car (perject--current))
-	  (perject--get-project-name "Create new frame for project: "
-								 (if (equal current-prefix-arg '(4)) 'current 'all)
-								 nil t (perject--current)
-								 "No project to create a frame for"
-								 "No project specified"))))
-  (let ((frame (make-frame)))
-	(with-selected-frame frame
-	  (perject--set-current proj))
-	(unless no-select (select-frame-set-input-focus frame))))
-
-
 ;;;; Managing Buffers
 
 (defun perject-add-buffer-to-project (buffer proj &optional msg)
@@ -873,8 +885,9 @@ In interactive use, the current buffer is added to the current project. If a
 single prefix argument is supplied or if the current frame is not associated
 with any project, the user is asked to choose the project from the current
 collection. In any other case the user may choose from the list of all projects
-from all active collections. A message is printed if
-`perject-buffer-to-project-message' is non-nil.
+from all active collections.
+In interactive use, depending on the value of `perject-messages', a message is
+printed upon successfully adding the buffer to the project.
 If the buffer is already associated with the project, an error is thrown.
 Note that this function does not check whether PROJ is an existent project and
 whether BUFFER has already been killed, so caller functions should take care of
@@ -900,7 +913,7 @@ that."
 		 t nil
 		 "All projects are already associated with the current buffer"
 		 "No project specified")))
-	perject-buffer-to-project-message))
+    (member 'add-buffer perject-messages)))
   (when (perject--is-assoc-with buffer proj)
 	(user-error "Buffer '%s' is already associated with project '%s'."
                 (buffer-name buffer) (perject-project-to-string proj)))
@@ -934,8 +947,9 @@ is non-nil, also display a message upon completion.
 In interactive use, the current buffer is removed from the current project. If a
 prefix argument is supplied or if the current frame is not associated with any
 project, the user is asked to choose the project from the list of all projects
-that are currently associated with BUFFER. A message is printed if
-`perject-buffer-to-project-message' is non-nil.
+that are currently associated with BUFFER.
+In interactive use, depending on the value of `perject-messages', a message is
+printed upon successfully removing the buffer from the project.
 If the buffer is not associated with the project, an error is thrown.
 Note that this function does not check whether PROJ is an existent project and
 whether BUFFER has already been killed, so caller functions should take care of
@@ -963,7 +977,7 @@ buffer of a project is removed."
 		 t nil
 		 "The buffer is currently not associated with any project"
 		 "No project specified")))
-	perject-buffer-to-project-message))
+	(member 'remove-buffer perject-messages)))
   (unless (perject--is-assoc-with buffer proj)
 	(user-error "Buffer '%s' is not associated with project '%s'."
                 (buffer-name buffer) (perject-project-to-string proj)))
@@ -984,13 +998,6 @@ buffer of a project is removed."
 				  (funcall perject-empty-project-delete proj))))
     (let (perject-confirmation)
       (perject-delete-collection name))))
-
-(defun perject-remove-buffer-from-project-and-kill (buffer proj &optional msg)
-  "Like `perject-remove-buffer-from-project', but also kills the buffer.
-The arguments behave like for that function."
-  (interactive-form 'perject-remove-buffer-from-project)
-  (perject-remove-buffer-from-project buffer proj msg)
-  (kill-buffer buffer))
 
 
 ;;;; Managing Collections
@@ -1114,24 +1121,65 @@ messages are printed."
 
 ;;;; Managing Projects
 
-(defun perject-switch-project (proj)
+(defun perject-switch-project (proj &optional msg)
   "Switch to the project PROJ within the current collection.
 PROJ may either be a project name within the current collection or a dotted pair
 with car the current collection name and cdr a project name.
-If no such project exists, create it."
+If no such project exists, create it. If PROJ is nil, deselect the
+current project and only focus on the current collection.
+If the optional argument MSG is non-nil, also print an informative message.
+In interactive use, this is determined by `perject-messages'."
   (interactive
    (progn
-	 (unless (perject--current)
-	   (user-error "The current frame is not associated with any collection"))
-	 (list (perject--get-project-name "Switch to project (or create new one): " 'current nil nil nil
-									  nil "No projct specified"))))
-  (let ((proj (if (stringp proj)
+	  (unless (perject--current)
+		(user-error "The current frame is not associated with any collection"))
+	  (list (perject--get-project-name "Switch to project (or create new one): " 'current nil nil nil
+									   nil #'ignore)
+			(member 'switch-project perject-messages))))
+  (let ((proj (if (or (not proj) (stringp proj))
 				  (cons (car (perject--current)) proj)
 				proj)))
-	(unless (perject--project-p proj)
-	  (push (cdr proj)
-			(alist-get (car proj) perject-collections nil nil #'string-equal)))
-	(perject--set-current proj)))
+	;; If the project does not exist yet, add it to the end of the current collection.
+	(when (and (cdr proj) (not (perject--project-p proj)))
+	  (setcdr
+	   (assoc (car proj) perject-collections)
+	   (append (alist-get (car proj) perject-collections nil nil #'string-equal)
+			   (list (cdr proj)))))
+	(perject--set-current proj)
+	(when msg
+	  (if (cdr proj)
+		  (message "Switched to project '%s'." (perject-project-to-string proj))
+		(message "Switch to collection '%s'." (car proj))))))
+
+(defun perject-switch-to-next-project (&optional msg)
+  "Switch to the next project within the current collection.
+If there is no current collection, throw an error.
+If the optional argument MSG is non-nil, also print an informative message.
+In interactive use, this is determined by `perject-messages'."
+  (interactive (list (member 'next-project perject-messages)))
+  (unless (perject--current)
+	(user-error "The current frame is not associated with a collection"))
+  (let ((projects (alist-get (car (perject--current)) perject-collections nil nil #'string-equal))
+		(current (cdr (perject--current))))
+	(unless projects
+	  (user-error "The current collection has no associated projects"))
+	(let ((index (or (and current (cl-position current projects)) 0)))
+	  (perject-switch-project (nth (mod (1+ index) (length projects)) projects) msg))))
+
+(defun perject-switch-to-previous-project (&optional msg)
+  "Switch to the previous project within the current collection.
+If there is no current collection, throw an error.
+If the optional argument MSG is non-nil, also print an informative message.
+In interactive use, this is determined by `perject-messages'."
+  (interactive (list (member 'previous-project perject-messages)))
+  (unless (perject--current)
+	(user-error "The current frame is not associated with a collection"))
+  (let ((projects (alist-get (car (perject--current)) perject-collections nil nil #'string-equal))
+		(current (cdr (perject--current))))
+	(unless projects
+	  (user-error "The current collection has no associated projects"))
+	(let ((index (or (and current (cl-position current projects)) 0)))
+	  (perject-switch-project (nth (mod (1- index) (length projects)) projects) msg))))
 
 (defun perject-rename-project (proj new-proj)
   "Rename the project PROJ to NEW-PROJ.
@@ -1144,7 +1192,7 @@ collection to move PROJ into."
   (interactive
    (let* ((proj
 		   (perject--get-project-name
-			"Select project to rename: " 'current nil t (perject--current)
+			"Select project to rename: " 'all nil t (perject--current)
 			"There currently is no project to rename"
 			"No project specified"))
 		  (col
@@ -1157,7 +1205,8 @@ collection to move PROJ into."
 			 (car proj))))
 	 (list
 	  proj
-	  (cons col (perject--get-new-project-name col "New name: ")))))
+	  (cons col (perject--get-new-project-name
+				 col (format "New name of project '%s' in collection '%s': " (cdr proj) col))))))
   (let* ((old-col (car proj))
 		 (old-name (cdr proj))
 		 (new-col (if (stringp new-proj) old-col (car new-proj)))
@@ -1248,6 +1297,146 @@ Which string is returned is determined by `perject-project-format'."
 	(funcall perject-project-format (car proj) (cdr proj))))
 
 
+;;;; Sorting Collections and Projects
+
+(transient-define-prefix perject-sort-collections ()
+  "Transient menu to sort the active collections.
+This is for example useful to influence the order in which collections are
+loaded."
+  [:description
+   (lambda ()
+	 (let ((col (perject--list-collections 'active)))
+	   (unless (> (length col) 0)
+		 (user-error "There currently are no collections to sort"))
+	   (setq perject--sort-collections-index (min perject--sort-collections-index (1- (length col))))
+	   (let ((current (nth perject--sort-collections-index col)))
+		 (concat
+		  "Sort collections: "
+		  (string-join (mapcar (lambda (c)
+								 (propertize c 'face
+											 (if (string-equal c current)
+												 'perject-sort-collections-current
+											   'perject-sort-collections-other)))
+							   col)
+					   ", ")))))
+   ("f" "Shift marked collection to right" perject--sort-collections-shift-right :transient t)
+   ("b" "Shift marked collection to left" perject--sort-collections-shift-left :transient t)
+   ("n" "Select the next collection" perject--sort-collections-next :transient t)
+   ("p" "Select the previous collection" perject--sort-collections-previous :transient t)])
+
+(defun perject--sort-collections-shift-right ()
+  "Shift collection to the right.
+The collection is determined by `perject--sort-collections-index'."
+  (interactive)
+  (unless (eq transient-current-command 'perject-sort-collections)
+    (user-error "This function can only be called within `perject-sort-collections'"))
+  (setq perject-collections
+		(if (eq perject--sort-collections-index (1- (length perject-collections)))
+			;; The current entry is the last one.
+			(cons (car (last perject-collections)) (butlast perject-collections))
+		  (append
+		   (seq-take perject-collections perject--sort-collections-index)
+		   (list (nth (1+ perject--sort-collections-index) perject-collections))
+		   (list (nth perject--sort-collections-index perject-collections))
+		   (seq-drop perject-collections (+ perject--sort-collections-index 2)))))
+  (setq perject--sort-collections-index (mod (1+ perject--sort-collections-index) (length perject-collections))))
+
+(defun perject--sort-collections-shift-left ()
+  "Shift collection to the left.
+The collection is determined by `perject--sort-collections-index'."
+  (interactive)
+  (let ((perject--sort-collections-index (mod (1- perject--sort-collections-index) (length perject-collections))))
+	(perject--sort-collections-shift-right))
+  (setq perject--sort-collections-index (mod (1- perject--sort-collections-index) (length perject-collections))))
+
+(defun perject--sort-collections-next ()
+  "Select the next collection as determined by `perject--sort-collections-index'."
+  (interactive)
+  (unless (eq transient-current-command 'perject-sort-collections)
+    (user-error "This function can only be called within `perject-sort-collections'"))
+  (setq perject--sort-collections-index (mod (1+ perject--sort-collections-index) (length perject-collections))))
+
+(defun perject--sort-collections-previous ()
+  "Select the previous collection as determined by `perject--sort-collections-index'."
+  (interactive)
+  (unless (eq transient-current-command 'perject-sort-collections)
+    (user-error "This function can only be called within `perject-sort-collections'"))
+  (setq perject--sort-collections-index (mod (1- perject--sort-collections-index) (length perject-collections))))
+
+
+(transient-define-prefix perject-sort-projects ()
+  "Transient menu to sort the projects of the current collection.
+This is for example useful to influence the order used for
+`perject-switch-to-next-project' and `perject-switch-to-previous-project'."
+  [:description
+   (lambda ()
+	 (unless (car (perject--current))
+	   (user-error "The current frame does not belong to a collection"))
+	 (let ((projects (mapcar #'cdr (perject--list-projects (car (perject--current))))))
+	   (unless (> (length projects) 0)
+		 (user-error "The current collection has no projects to sort"))
+	   (setq perject--sort-projects-index (min perject--sort-projects-index (1- (length projects))))
+	   (let ((current (nth perject--sort-projects-index projects)))
+		 (format "Sort projects of collection '%s': %s"
+				 (car (perject--current))
+				 (string-join (mapcar (lambda (p)
+										(propertize p 'face
+													(if (equal p current)
+														'perject-sort-projects-current
+													  'perject-sort-projects-other)))
+									  projects)
+							  ", ")))))
+   ("f" "Shift marked project to right" perject--sort-projects-shift-right :transient t)
+   ("b" "Shift marked project to left" perject--sort-projects-shift-left :transient t)
+   ("n" "Select the next project" perject--sort-projects-next :transient t)
+   ("p" "Select the previous project" perject--sort-projects-previous :transient t)])
+
+(defun perject--sort-projects-shift-right ()
+  "Shift project to the right.
+The project is determined by `perject--sort-projects-index'."
+  (interactive)
+  (unless (eq transient-current-command 'perject-sort-projects)
+    (user-error "This function can only be called within `perject-sort-projects'"))
+  (let ((projects (alist-get (car (perject--current)) perject-collections nil nil #'string-equal)))
+	(setcdr (assoc (car (perject--current)) perject-collections)
+		  (if (eq perject--sort-projects-index (1- (length projects)))
+			  ;; The current entry is the last one.
+			  (cons (car (last projects)) (butlast projects))
+			(append
+			 (seq-take projects perject--sort-projects-index)
+			 (list (nth (1+ perject--sort-projects-index) projects))
+			 (list (nth perject--sort-projects-index projects))
+			 (seq-drop projects (+ perject--sort-projects-index 2)))))
+	(setq perject--sort-projects-index (mod (1+ perject--sort-projects-index) (length projects)))))
+
+(defun perject--sort-projects-shift-left ()
+  "Shift project to the left.
+The collection is determined by `perject--sort-projects-index'."
+  (interactive)
+  (let ((length (length (alist-get (car (perject--current)) perject-collections nil nil #'string-equal))))
+	(let ((perject--sort-projects-index (mod (1- perject--sort-projects-index) length)))
+	  (perject--sort-projects-shift-right))
+	(setq perject--sort-projects-index (mod (1- perject--sort-projects-index) length))))
+
+(defun perject--sort-projects-next ()
+  "Select the next collection as determined by `perject--sort-projects-index'."
+  (interactive)
+  (unless (eq transient-current-command 'perject-sort-projects)
+    (user-error "This function can only be called within `perject-sort-projects'"))
+  (setq perject--sort-projects-index
+		(mod (1+ perject--sort-projects-index)
+			 (length (alist-get (car (perject--current)) perject-collections nil nil #'string-equal)))))
+
+(defun perject--sort-projects-previous ()
+  "Select the previous collection as determined by `perject--sort-projects-index'."
+  (interactive)
+  (unless (eq transient-current-command 'perject-sort-projects)
+    (user-error "This function can only be called within `perject-sort-projects'"))
+  (setq perject--sort-projects-index
+		(mod (1- perject--sort-projects-index)
+			 (length (alist-get (car (perject--current)) perject-collections nil nil #'string-equal)))))
+
+
 ;;;; Internal Interface
 
 (defun perject--current (&optional frame)
@@ -1266,8 +1455,7 @@ If FRAME is nil, it defaults to the selected frame."
   (let ((proj (if (stringp proj) (cons proj nil) proj)))
 	(set-frame-parameter frame 'perject-project proj)
 	(when perject-frame-title-format
-	  (set-frame-parameter frame 'name
-						   (funcall perject-frame-title-format proj)))
+	  (set-frame-parameter frame 'name (and proj (funcall perject-frame-title-format proj))))
 	(when perject-mode-line-format
 	  (force-mode-line-update))))
 

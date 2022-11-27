@@ -291,23 +291,23 @@ It may have one of the following values:
 		  (const :tag "Don't delete the project" nil)
 		  (function :tag "Custom function")))
 
-(defcustom perject-mode-line-format t
-  "This variable determines the format of the mode line indicator of perject.
-It may have one of the following values:
+(defcustom perject-mode-line-format #'perject-mode-line-indicator
+  "This variable determines the mode line indicator of perject.
+It may have one of the following two values:
 - nil: No mode line entry is shown for perject.
 - A function: Call that function with two strings as an argument, namely the
   name of the current collection and project (both of which may be nil). The
   function should return the string to display in the mode line.
-- t: Use the default format, which displays the name of the current collection
-  and project with the face `perject-mode-line-face'."
+By default, the function `perject-mode-line-indicator' is used, which which
+displays the name of the current collection and project with the face
+`perject-mode-line-face'."
   :type '(choice
 		  (const :tag "No mode line entry is shown for perject" nil)
-		  (function :tag "Custom function")
-		  (const :tag "Use the default format" t)))
+		  (function :tag "Custom function")))
 
 (defcustom perject-frame-title-format #'perject-frame-title
   "This variable determines the format of the title of a frame.
-It may have one of the following values:
+It may have one of the following two values:
 - nil: The title of a frame is not altered by perject.
 - A function: Call the function with a dotted pair as its only argument,
   whose car is a collection name and whose cdr is a project name. The collection
@@ -471,8 +471,8 @@ Should not be modified by the user.")
 
 (defvar perject--desktop-current nil
   "Internal variable that is set to the current collection while saving or loading a project.
-More precisely, its value is a list with car the collection name and remaining
-values its corresponding projects.
+More precisely, it is a list with car the collection name and remaining values
+its corresponding projects.
 Should not be modified by the user.")
 
 (defvar perject--desktop-reuse-frames nil
@@ -518,13 +518,10 @@ Should not be modified by the user.")
         (unless (or (not perject-mode-line-format)
                     (assoc 'perject-mode mode-line-misc-info)
                     (not mode-line-misc-info))
-          (push `(perject-mode
+          (push '(perject-mode
 				  (:eval
-				   ,(if (functionp perject-mode-line-format)
-						'(funcall perject-mode-line-format
-								  (car (perject--current))
-								  (cons (perject--current)))
-					  '(perject-mode-line-indicator))))
+				   (funcall perject-mode-line-format
+							 (car (perject--current)) (cdr (perject--current)))))
                 (cdr (last mode-line-misc-info)))))
 
 	;; Remove the added hooks.
@@ -543,13 +540,13 @@ Should not be modified by the user.")
 		  (set-frame-parameter frame 'name nil))))))
 
 
-(defun perject-mode-line-indicator ()
+(defun perject-mode-line-indicator (col proj)
   "Return a string for the mode line indicator of perject.
-This function is used only if `perject-mode-line-format' is t."
-  (and (car (perject--current))
-       (propertize (concat (car (perject--current))
-						   (when (cdr (perject--current))
-							 (concat " | " (cdr (perject--current))))
+COL is the current collection and PROJ is the current project name."
+  (and col
+       (propertize (concat col
+						   (when proj
+							 (concat " | " proj))
 						   " ")
                    'face 'perject-mode-line-face)))
 

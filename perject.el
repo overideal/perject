@@ -1339,9 +1339,19 @@ The collection is determined by `perject--sort-collections-index'."
   "Shift collection to the left.
 The collection is determined by `perject--sort-collections-index'."
   (interactive)
-  (let ((perject--sort-collections-index (mod (1- perject--sort-collections-index) (length perject-collections))))
-	(perject--sort-collections-shift-right))
-  (setq perject--sort-collections-index (mod (1- perject--sort-collections-index) (length perject-collections))))
+  (unless (eq transient-current-command 'perject-sort-collections)
+    (user-error "This function can only be called within `perject-sort-collections'"))
+  (let ((length (length perject-collections)))
+	;; In the right shift function, we don't apply a transposition in the
+	;; special case that the collection is the rightmost element.
+	;; Therefore, here we need to manually take care of the case that the
+	;; collection is the leftmost element.
+	(if (eq perject--sort-collections-index 0)
+		(setq perject-collections
+			  (append (cdr perject-collections) (list (car perject-collections))))
+	  (let ((perject--sort-collections-index (mod (1- perject--sort-collections-index) length)))
+		(perject--sort-collections-shift-right)))
+	(setq perject--sort-collections-index (mod (1- perject--sort-collections-index) length))))
 
 (defun perject--sort-collections-next ()
   "Select the next collection as determined by `perject--sort-collections-index'."
@@ -1392,23 +1402,35 @@ The project is determined by `perject--sort-projects-index'."
     (user-error "This function can only be called within `perject-sort-projects'"))
   (let ((projects (alist-get (car (perject--current)) perject-collections nil nil #'string-equal)))
 	(setcdr (assoc (car (perject--current)) perject-collections)
-		  (if (eq perject--sort-projects-index (1- (length projects)))
-			  ;; The current entry is the last one.
-			  (cons (car (last projects)) (butlast projects))
-			(append
-			 (seq-take projects perject--sort-projects-index)
-			 (list (nth (1+ perject--sort-projects-index) projects))
-			 (list (nth perject--sort-projects-index projects))
-			 (seq-drop projects (+ perject--sort-projects-index 2)))))
+			(if (eq perject--sort-projects-index (1- (length projects)))
+				;; The current entry is the last one.
+				;; In the other case we interchange the two entries (apply a
+				;; transposition). To stay with the "shift" metaphor, we don't
+				;; do the same here but simply move the project to the start of
+				;; the list.
+				(cons (car (last projects)) (butlast projects))
+			  (append
+			   (seq-take projects perject--sort-projects-index)
+			   (list (nth (1+ perject--sort-projects-index) projects)
+					 (nth perject--sort-projects-index projects))
+			   (seq-drop projects (+ perject--sort-projects-index 2)))))
 	(setq perject--sort-projects-index (mod (1+ perject--sort-projects-index) (length projects)))))
 
 (defun perject--sort-projects-shift-left ()
   "Shift project to the left.
 The collection is determined by `perject--sort-projects-index'."
   (interactive)
+  (unless (eq transient-current-command 'perject-sort-projects)
+    (user-error "This function can only be called within `perject-sort-projects'"))
   (let ((length (length (alist-get (car (perject--current)) perject-collections nil nil #'string-equal))))
-	(let ((perject--sort-projects-index (mod (1- perject--sort-projects-index) length)))
-	  (perject--sort-projects-shift-right))
+	;; See `perject--sort-collections-shift-left' for an explanation of the case
+	;; distinction.
+	(if (eq perject--sort-projects-index 0)
+		(let ((projects (alist-get (car (perject--current)) perject-collections nil nil #'string-equal)))
+		  (setcdr (assoc (car (perject--current)) perject-collections)
+				  (append (cdr projects) (list (car projects)))))
+	  (let ((perject--sort-projects-index (mod (1- perject--sort-projects-index) length)))
+		(perject--sort-projects-shift-right)))
 	(setq perject--sort-projects-index (mod (1- perject--sort-projects-index) length))))
 
 (defun perject--sort-projects-next ()

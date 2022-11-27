@@ -1128,8 +1128,7 @@ If the optional argument MSG is non-nil, also print an informative message.
 In interactive use, this is determined by `perject-messages'."
   (interactive
    (progn
-	  (unless (perject--current)
-		(user-error "The current frame is not associated with any collection"))
+	  (perject-assert-collection)
 	  (list (perject--get-project-name "Switch to project (or create new one): " 'current nil nil nil
 									   nil #'ignore)
 			(member 'switch-project perject-messages))))
@@ -1154,8 +1153,7 @@ If there is no current collection, throw an error.
 If the optional argument MSG is non-nil, also print an informative message.
 In interactive use, this is determined by `perject-messages'."
   (interactive (list (member 'next-project perject-messages)))
-  (unless (perject--current)
-	(user-error "The current frame is not associated with a collection"))
+  (perject-assert-collection)
   (let ((projects (alist-get (car (perject--current)) perject-collections nil nil #'string-equal))
 		(current (cdr (perject--current))))
 	(unless projects
@@ -1169,8 +1167,7 @@ If there is no current collection, throw an error.
 If the optional argument MSG is non-nil, also print an informative message.
 In interactive use, this is determined by `perject-messages'."
   (interactive (list (member 'previous-project perject-messages)))
-  (unless (perject--current)
-	(user-error "The current frame is not associated with a collection"))
+  (perject-assert-collection)
   (let ((projects (alist-get (car (perject--current)) perject-collections nil nil #'string-equal))
 		(current (cdr (perject--current))))
 	(unless projects
@@ -1367,8 +1364,7 @@ This is for example useful to influence the order used for
 `perject-switch-to-next-project' and `perject-switch-to-previous-project'."
   [:description
    (lambda ()
-	 (unless (car (perject--current))
-	   (user-error "The current frame does not belong to a collection"))
+	 (perject-assert-collection)
 	 (let ((projects (mapcar #'cdr (perject--list-projects (car (perject--current))))))
 	   (unless (> (length projects) 0)
 		 (user-error "The current collection has no projects to sort"))
@@ -1495,11 +1491,6 @@ alternatively be a collection name."
   "Return the list of all buffers not associated with any project."
   (cl-remove-if (apply-partially #'buffer-local-value 'perject-buffer) (buffer-list)))
 
-(defun perject--is-anonymous-buffer (buffer)
-  "Return non-nil if the buffer BUFFER is anonymous.
-This means that it is not associated with any project."
-  (buffer-local-value 'perject-buffer buffer))
-
 (defun perject--collection-p (name &optional scope)
   "Return a non-nil value if there exists a collection called NAME.
 The optional argument SCOPE behaves like for `perject--list-collections'."
@@ -1509,6 +1500,21 @@ The optional argument SCOPE behaves like for `perject--list-collections'."
   "Return a non-nil value if the project PROJ exists.
 PROJ is a cons cell with car a collection name and cdr a project name."
   (member (cdr proj) (alist-get (car proj) perject-collections nil nil #'string-equal)))
+
+(defun perject-assert-collection (&optional frame)
+  "Ensure that frame FRAME has a current collection and return it (a string).
+If not, throw an error. If nil, FRAME defaults to the selected frame."
+  (or (car (perject--current frame))
+	  (user-error "The %sframe is not associated with any collection"
+				  (if frame "" "current "))))
+
+(defun perject-assert-project (&optional frame)
+  "Ensure that frame FRAME has a current project and return it (a dotted pair).
+If not, throw an error. If nil, FRAME defaults to the selected frame."
+  (let ((current (perject--current frame)))
+	(or (and (cdr current) current)
+		(user-error "The %sframe is not associated with any project"
+					(if frame "" "current ")))))
 
 (defun perject--get-collection-dir (name)
   "Return the directory belonging to a (possibly non-existent) collection with name NAME."

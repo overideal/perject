@@ -209,22 +209,20 @@ newly created frame."
 		  (const :tag "Switch after reloading a project using `perject-reload-collection'" reload)))
 
 (defcustom perject-messages
-  '(add-buffer remove-buffer switch-collection next-project previous-project)
+  '(add-buffer remove-buffer next-project previous-project)
   "Whether to print informative messages when performing certain actions.
 The value of this variable is a list which may contain any of the following
 symbols, whose presence in the list leads to a message being printed in the
 indicated command:
 - 'add-buffer: `perject-add-buffer-to-project',
 - 'remove-buffer: `perject-remove-buffer-from-project',
-- 'switch-collection: `perject-switch-collection',
-- 'switch-project: `perject-switch-project',
+- 'switch: `perject-switch',
 - 'next-project: `perject-switch-to-next-project',
 - 'previous-project: `perject-switch-to-previous-project'."
   :type '(set
 		  (const :tag "`perject-add-buffer-to-project'" add-buffer)
 		  (const :tag "`perject-remove-buffer-from-project'" remove-buffer)
-		  (const :tag "`perject-switch-collection'" switch-collection)
-		  (const :tag "`perject-switch-project'" switch-project)
+		  (const :tag "`perject-switch'")
 		  (const :tag "`perject-switch-to-next-project'" next-project)
 		  (const :tag "`perject-switch-to-previous-project'." previous-project)))
 
@@ -345,40 +343,62 @@ names."
 
 (defcustom perject-after-init-hook nil
   "Hook run after perject has initialized.
-This means that all the buffers and frames from the projects that were
-configured to load automatically have been restored.
-The functions are called with one argument, namely the list of project names
-that were restored. This list is ordered (leftmost project was restored first)
-and nil represents the anonymous project."
+This means that all the collections that were configured to load automatically
+have been restored from their desktop files. In particular, all the respective
+buffers and frames have been loaded.
+The functions are called with one argument, namely the list of collection names
+that were restored. This list is ordered (the leftmost collection was restored
+first)."
+  :type 'hook)
+
+(defcustom perject-before-switch-hook nil
+  "Hook run before perject has switched project or collection using `perject-switch'.
+The functions are called with three arguments: the original collection or
+project, the collection or project that will be switched to and the frame."
+  :type 'hook)
+
+(defcustom perject-after-switch-hook nil
+  "Hook run after perject has switched project or collection using `perject-switch'.
+The functions are called with three arguments: the original collection or
+project, the newly switched to collection or project and the frame."
   :type 'hook)
 
 (defcustom perject-before-open-hook nil
-  "Hook run before perject opens a project using `perject-open-collection'.
-In particular, the buffers and frames from the project have not yet been
-restored.
-The functions are called with one argument, namely the name of the project to be
-opened."
+  "Hook run before perject opens a collection using `perject-open-collection'.
+In particular, the projects, buffers and frames belonging to the collection have
+not yet been restored.
+The functions are called with one argument, namely the name of the collection to
+be opened."
   :type 'hook)
 
 (defcustom perject-after-open-hook nil
-  "Hook run after perject has opened a project using `perject-open-collection'.
-In particular, all the buffers and frames from the project have been restored.
+  "Hook run after perject has opened a collection using `perject-open-collection'.
+In particular, the projects, buffers and frames belonging to the collection have
+been restored.
 The functions are called with one argument, namely the name of the newly opened
-project.
-The variable `perject--desktop-restored-frames' is the list of newly created
-frames and might be useful."
+project."
   :type 'hook)
 
 (defcustom perject-before-create-hook nil
-  "Hook run before perject creates a new project using `perject-open-collection'.
-The functions are called with one argument, namely the name of the closed
-project."
+  "Hook run before perject creates a new collection or project'.
+This influences the commands `perject-switch' and `perject-open-collection'.
+The functions are called with one argument, which is either a string
+representing the name of the new collection or a dotted pair representing the
+new project.
+Note that if a new project is created that belongs to a new collection, this
+hook is run twice: first before creating the collection and another time before
+creating the project."
   :type 'hook)
 
 (defcustom perject-after-create-hook nil
-  "Hook run after perject has created a new project using `perject-open-collection'.
-The functions are called with one argument, namely the name of the closed
-project."
+  "Hook run after perject has created a new collection or project.
+This influences the commands `perject-switch' and `perject-open-collection'.
+The functions are called with one argument, which is either a string
+representing the name of the new collection or a dotted pair representing the
+new project.
+Note that if a new project is created that belongs to a new collection, this
+hook is run twice: first after creating the collection and another time after
+creating the project."
   :type 'hook)
 
 (defcustom perject-before-close-hook nil
@@ -399,14 +419,33 @@ project of this collection and that have not been killed."
 
 (defcustom perject-before-reload-hook nil
   "Hook run before perject reloads a collection using `perject-reload-collection'.
-The functions are called with one argument, namely the name of the project to be
-reloaded."
+The functions are called with one argument, namely the name of the collection to
+be reloaded."
   :type 'hook)
 
 (defcustom perject-after-reload-hook nil
   "Hook run after perject has reloaded a collection using `perject-reload-collection'.
 The functions are called with one argument, namely the name of the reloaded
-project."
+collection."
+  :type 'hook)
+
+(defcustom perject-rename-hook nil
+  "Hook run after perject has renamed a collection or project using `perject-rename'.
+The functions are called with two arguments, namely the old collection or
+project and the new one. The arguments are either both collection names or both
+dotted pairs representing projects."
+  :type 'hook)
+
+(defcustom perject-before-delete-collection-hook nil
+  "Hook run before perject deletes a collection using `perject-delete-collection'.
+The functions are called with one argument, namely the name of the collection to
+be deleted."
+  :type 'hook)
+
+(defcustom perject-after-delete-collection-hook nil
+  "Hook run after perject has deleted a collection using `perject-delete-collection'.
+The functions are called with one argument, namely the name of the deleted
+collection."
   :type 'hook)
 
 (defcustom perject-before-delete-project-hook nil
@@ -628,36 +667,29 @@ This function is called by `perject-mode' before exiting Emacs (using
   (setq perject--previous-collections (perject--list-collections 'active)))
 
 
-;;;; Opening and Closing Collections
+;;;; Creating, Renaming and Deleting
 
-(defun perject-switch-collection (name &optional frame msg)
-  "Switch the collection of the frame FRAME to the collection named NAME.
-If FRAME is nil, it defaults to the current frame and if NAME is nil, remove the
-current collection (if any) from the frame, so that it does not belong to any
-collection anymore. If MSG is non-nil, also print a message.
-In interactive use, the current frame is used, the user is asked for NAME
-and MSG is determined by the variable `perject-messages'."
-  (interactive
-   (list
-	(perject--get-collection-name
-	 "Add current frame to collection: " 'active
-	 (-compose #'not (apply-partially #'perject--is-assoc-with (selected-frame)))
-	 t nil "No collection to add frame to" #'ignore)
-	(selected-frame)
-	(member 'switch-collection perject-messages)))
-  (let ((frame (or frame (selected-frame)))
-		(old-name (car (perject--current frame))))
-	(perject--set-current name frame)
-	(when msg
-	  (let ((is-current (equal frame (selected-frame))))
-	  (if name
-		  (message "Added %sframe to collection '%s'."
-				   (if is-current "current " "") name)
-		(if old-name
-			(message "Removed %sframe from collection '%s'."
-					 (if is-current "current " "") old-name)
-		  (message "%s is not associated with a collection."
-				   (if is-current "Current frame" "Frame"))))))))
+(defun perject-create (proj)
+  "Create a new collection or project PROJ.
+PROJ may be a collection or a project represented a dotted pair with car a
+collection and cdr a project name."
+  (run-hook-with-args 'perject-before-create-hook proj)
+  (if (stringp proj)
+	  (progn
+		(make-directory (perject--get-collection-dir proj) t)
+		;; Create a desktop file.
+		(perject-save-collection proj)
+		;; The order of the collections matters and we want the new collection to
+		;; be at the rightmost position.
+		(setq perject-collections (append perject-collections (list (list proj)))))
+	;; If the corresponding collection does not exist yet, create it.
+	(unless (perject--collection-p (car proj))
+	  (perject-create (car proj)))
+	(setcdr
+	 (assoc (car proj) perject-collections)
+	 (append (alist-get (car proj) perject-collections nil nil #'string-equal)
+			 (list (cdr proj)))))
+  (run-hook-with-args 'perject-after-create-hook proj))
 
 (defun perject-create-new-frame (proj &optional no-select)
   "Create a new frame for PROJ and select it, unless NO-SELECT is non-nil.
@@ -680,6 +712,174 @@ collection. In any other case, the user may select from all projects."
 	(with-selected-frame frame
 	  (perject--set-current proj))
 	(unless no-select (select-frame-set-input-focus frame))))
+
+(defun perject-rename (proj new-proj)
+  "Rename the collection or project PROJ to NEW-PROJ.
+PROJ and NEW-PROJ may either both be collection names or projects represented by
+dotted pairs.
+
+In interactive use, the behavior is dependent on the number of prefix arguments.
+Without a prefix argument, the user may select a project from the list of all
+projects to rename. With a single prefix argument, the user may also select a
+collection to move PROJ into. In any other case, the user may select a
+collection to rename.
+
+This function runs the hook `perject-rename-hook'."
+  (interactive
+   (let ((proj
+		  (if (or (not current-prefix-arg) (equal current-prefix-arg '(4)))
+			  (perject--get-project-name
+			   "Select project to rename: " 'all nil t (perject--current)
+			   "There currently is no project to rename"
+			   "No project specified")
+			(perject--get-collection-name
+			 "Select collection to rename: " 'active nil t (car (perject--current))
+			 "There currently is no collection to rename"
+			 "No collection specified"))))
+	 (list
+	  proj
+	  (if (or (not current-prefix-arg) (equal current-prefix-arg '(4)))
+		  (let ((col
+				 (if current-prefix-arg
+					 (perject--get-collection-name
+					  "Select a collection to move the project to: " 'active nil t
+					  (car (perject--current)) nil "No collection specified")
+				   (car proj))))
+			(cons col (perject--get-new-project-name
+					   col (format "New name of project '%s' in collection '%s': " (cdr proj) col))))
+		(perject--get-new-collection-name "New name of collection '%s': " proj)))))
+  (if (stringp proj)
+	  (perject-rename-collection proj new-proj)
+	(perject-rename-project proj new-proj))
+  (run-hook-with-args 'perject-rename-hook proj new-proj))
+
+(defun perject-rename-collection (old-name new-name)
+  "Rename the collection named OLD-NAME to NEW-NAME."
+  (dolist (frame (frame-list))
+	(when (perject--is-assoc-with frame old-name)
+	  (perject--set-current (cons new-name (cdr (perject--current frame))) frame)))
+  (setcar (assoc old-name perject-collections) new-name)
+  (dolist (buffer (buffer-list))
+	(with-current-buffer buffer
+	  (setq perject-buffer
+			(mapcar (lambda (proj)
+					  (if (string-equal (car proj) old-name)
+						  (cons new-name (cdr proj))
+						proj))
+					perject-buffer))))
+  (when (file-exists-p (perject--get-collection-dir old-name))
+	(rename-file (perject--get-collection-dir old-name)
+				 (perject--get-collection-dir new-name))))
+
+(defun perject-rename-project (proj new-proj)
+  "Rename the project PROJ to NEW-PROJ.
+PROJ and NEW-PROJ are both dotted pairs with car a collection and cdr a project
+name. NEW-PROJ may also be a string to be used as the new project name within
+the same collection."
+  (let* ((old-col (car proj))
+		 (old-name (cdr proj))
+		 (new-col (if (stringp new-proj) old-col (car new-proj)))
+		 (new-name (if (stringp new-proj) new-proj (cdr new-proj)))
+		 (new-proj (cons new-col new-name))
+		 (old-col-list (assoc old-col perject-collections)))
+	(dolist (frame (frame-list))
+	  (when (perject--is-assoc-with frame proj)
+		(perject--set-current new-proj frame)))
+	(if (string-equal old-col new-col)
+		(setcdr old-col-list (cl-substitute new-name old-name (cdr old-col-list) :test #'equal))
+	  (setcdr old-col-list (delete old-name (cdr old-col-list)))
+	  (push new-name (alist-get new-col perject-collections nil nil #'string-equal)))
+	(dolist (buffer (perject--get-buffers proj))
+	  (with-current-buffer buffer
+		(setq perject-buffer (cl-substitute new-proj proj perject-buffer :test #'equal))))))
+
+(defun perject-delete-collection (name &optional kill-buffers)
+  "Delete the collection named NAME.
+This includes closing the collection and deleting all corresponding projects and
+the corresponding desktop file. In interactive use, the user is asked for NAME.
+The variable `perject-confirmation' determines whether the user is asked for
+confirmation before deleting the collection.
+If the optional argument KILL-BUFFERS is non-nil, kill all buffers that belong
+to that collection and to no other collection or project. In interactive use,
+the prefix argument determines this variable as specified by
+`perject-kill-buffers-by-default'.
+The variable `perject-confirmation-kill-buffers' decides if the user is asked
+for confirmation before any buffers are killed.
+An error is thrown if there is no collection to delete or all the open frames
+belong to the selected collection.
+This function runs the hooks `perject-before-delete-collection-hook' and
+`perject-after-delete-collection-hook'."
+  (interactive
+   (list
+    (perject--get-collection-name
+     "Delete collection: " 'active nil t (car (perject--current))
+     "There currently is no collection to delete"
+	 "No collection specified")
+    (or (and (member 'delete perject-kill-buffers-by-default) (not current-prefix-arg))
+		(and (not (member 'delete perject-kill-buffers-by-default)) current-prefix-arg))))
+  (when (or (not (member 'delete perject-confirmation))
+            (y-or-n-p (format "Deleting collection '%s'. Are you sure?" name)))
+	(run-hook-with-args 'perject-before-delete-collection-hook name)
+    ;; If the collection is active, close it.
+    (when (perject--collection-p name 'active)
+      (let ((perject-confirmation-kill-buffers
+			 (and (member 'delete perject-confirmation-kill-buffers)
+				  (list 'close)))
+			perject-save-on-close perject-confirmation)
+        (perject-close-collection name kill-buffers)))
+    (when (file-exists-p (perject--get-collection-dir name))
+      (delete-directory (perject--get-collection-dir name) t))
+	(run-hook-with-args 'perject-after-delete-collection-hook name)))
+
+(defun perject-delete-project (proj &optional kill-buffers)
+  "Delete the project PROJ.
+In interactive use, the user is asked for PROJ.
+The variable `perject-confirmation' determines whether the user is asked for
+confirmation before deleting the project.
+If the optional argument KILL-BUFFERS is non-nil, kill all buffers that belong
+to that collection and to no other project. In interactive use, the prefix
+argument determines this variable as specified by
+`perject-kill-buffers-by-default'.
+The variable `perject-confirmation-kill-buffers' decides if the user is asked
+for confirmation before any buffers are killed.
+An error is thrown if there is no project to delete.
+This function runs the hooks `perject-before-delete-project-hook' and
+`perject-after-delete-project-hook'."
+  (interactive
+   (list
+    (perject--get-project-name
+     "Delete project: " 'all nil t (perject--current)
+     "There currently is no project to delete"
+	 "No project specified")
+    (or (and (member 'delete-project perject-kill-buffers-by-default) (not current-prefix-arg))
+		(and (not (member 'delete-project perject-kill-buffers-by-default)) current-prefix-arg))))
+  (when (or (not (member 'delete-project perject-confirmation))
+            (y-or-n-p (format "Deleting project '%s'. Are you sure?"
+							  (perject-project-to-string proj))))
+	(let ((buffers (perject--get-buffers proj))
+		  buffers-to-kill)
+	  (run-hook-with-args 'perject-before-delete-project-hook proj buffers)
+	  ;; Remove the project from the list of active collections.
+	  (let ((col (assoc (car proj) perject-collections)))
+		(setcdr col (delete (cdr proj) (cdr col))))
+	  ;; Remove all buffers from the project.
+	  (dolist (buffer buffers)
+		(with-current-buffer buffer
+		  (setq perject-buffer (delete proj perject-buffer))
+		  (unless perject-buffer
+			(push buffer buffers-to-kill))))
+	  (when (and kill-buffers
+				 buffers-to-kill
+				 (or (not (member 'delete-project perject-confirmation-kill-buffers))
+					 (y-or-n-p (format "Kill buffers belonging only to project '%s'?"
+									   (perject-project-to-string proj)))))
+		(dolist (buffer buffers-to-kill)
+		  (kill-buffer buffer))
+		(setq buffers (cl-set-difference buffers buffers-to-kill)))
+	  (run-hook-with-args 'perject-after-delete-project-hook proj buffers))))
+
+
+;;;; Opening, Closing and Saving
 
 ;; The `perject-open-collection' command is very subtle, due to the following:
 ;; When loading a desktop, `desktop.el' selects the loaded buffers in the
@@ -708,10 +908,7 @@ Before creating the collection, run `perject-before-create-hook' and afterwards
 run `perject-after-create-hook'.
 If no new collection is created, run the hooks `perject-before-open-hook' and
 `perject-after-open-hook' instead.
-In interactive use, the user is asked for the project name.
-If you want to further change the list of projects, do so in
-`perject-before-open-hook' or `perject-after-open-hook'. Hooks that e.g. add a
-buffer to a project have no effect while the desktop is being loaded."
+In interactive use, the user is asked for the collection name."
   (interactive
    (list
 	(perject--get-collection-name "Open collection: "
@@ -740,15 +937,8 @@ buffer to a project have no effect while the desktop is being loaded."
 				   (memq 'open perject-switch-to-new-frame))
 		  (select-frame-set-input-focus (car perject--desktop-restored-frames)))
 		(run-hook-with-args 'perject-after-open-hook name))
-	(run-hook-with-args 'perject-before-create-hook name)
-	(make-directory (perject--get-collection-dir name) t)
-	;; Create a desktop file.
-	(perject-save-collection name)
-	;; The order of the collections matters and we want the new collection to
-	;; be at the rightmost position.
-	(setq perject-collections (append perject-collections (list (list name))))
-	(perject-create-new-frame name (not (memq 'create perject-switch-to-new-frame)))
-	(run-hook-with-args 'perject-after-create-hook name)))
+	(perject-create name)
+    (perject-create-new-frame name (not (memq 'create perject-switch-to-new-frame)))))
 
 
 (defun perject-open-collection-in-new-instance (name)
@@ -871,194 +1061,6 @@ This function runs the hooks `perject-before-reload-hook' and
 		(delete-frame frame)))
 	(run-hook-with-args 'perject-after-reload-hook name)))
 
-
-;;;; Managing Buffers
-
-(defun perject-add-buffer-to-project (buffer proj &optional msg)
-  "Add the buffer BUFFER to the project PROJ.
-PROJ is a dotted pair with car a collection name and cdr a project name. If MSG
-is non-nil, also display a message upon completion.
-In interactive use, the current buffer is added to the current project. If a
-single prefix argument is supplied or if the current frame is not associated
-with any project, the user is asked to choose the project from the current
-collection. In any other case the user may choose from the list of all projects
-from all active collections.
-In interactive use, depending on the value of `perject-messages', a message is
-printed upon successfully adding the buffer to the project.
-If the buffer is already associated with the project, an error is thrown.
-Note that this function does not check whether PROJ is an existent project and
-whether BUFFER has already been killed, so caller functions should take care of
-that."
-  (interactive
-   (list
-	(current-buffer)
-	(if (and (not current-prefix-arg) (cdr (perject--current)))
-		(perject--current)
-	  ;; Let the user select from the projects of the current collection only if
-	  ;; not all of them are already associated with the buffer.
-	  (if-let (((or (not current-prefix-arg) (eq current-prefix-arg '(4))))
-			   (col (car (perject--current)))
-			   (projects (cl-remove-if
-						  (apply-partially #'perject--is-assoc-with (current-buffer))
-						  (perject--list-projects col))))
-		  (perject--get-project-name
-		   "Add buffer to project: " projects nil t nil nil
-		   "No project specified")
-		(perject--get-project-name
-		 "Add buffer to project: " 'all
-		 (-compose 'not (apply-partially #'perject--is-assoc-with (current-buffer)))
-		 t nil
-		 "All projects are already associated with the current buffer"
-		 "No project specified")))
-    (member 'add-buffer perject-messages)))
-  (when (perject--is-assoc-with buffer proj)
-	(user-error "Buffer '%s' is already associated with project '%s'."
-                (buffer-name buffer) (perject-project-to-string proj)))
-  (with-current-buffer buffer
-	(push proj perject-buffer))
-  (when msg
-    (message "Added buffer '%s' to project '%s'."
-			 (buffer-name buffer) (perject-project-to-string proj))))
-
-
-(defun perject--auto-add-buffer (&optional ignore)
-  "Silently add the current buffer to projects honoring `perject-auto-add-function'.
-If IGNORE is non-nil, simply add the current buffer to the current project;
-i.e. act as if `perject-auto-add-function' was nil.
-Does nothing to projects that are already associated with the buffer."
-  (let ((buffer (current-buffer)))
-	(if (or ignore (not perject-auto-add-function))
-		(let ((project (perject--current)))
-		  (when (and (cdr project) (not (perject--is-assoc-with buffer project)))
-			(perject-add-buffer-to-project buffer project)))
-	  (dolist (project (funcall perject-auto-add-function buffer (perject--current)))
-		(when (and (perject--project-p project)
-				   (not (perject--is-assoc-with buffer project)))
-		  (perject-add-buffer-to-project buffer project))))))
-
-
-(defun perject-remove-buffer-from-project (buffer proj &optional msg)
-  "Remove the buffer BUFFER from the project PROJ.
-PROJ is a dotted pair with car a collection name and cdr a project name. If MSG
-is non-nil, also display a message upon completion.
-In interactive use, the current buffer is removed from the current project. If a
-prefix argument is supplied or if the current frame is not associated with any
-project, the user is asked to choose the project from the list of all projects
-that are currently associated with BUFFER.
-In interactive use, depending on the value of `perject-messages', a message is
-printed upon successfully removing the buffer from the project.
-If the buffer is not associated with the project, an error is thrown.
-Note that this function does not check whether PROJ is an existent project and
-whether BUFFER has already been killed, so caller functions should take care of
-that.
-The variable `perject-empty-project-delete' determines what happens if the last
-buffer of a project is removed."
-  (interactive
-   (list
-	(current-buffer)
-	(if (and (not current-prefix-arg) (cdr (perject--current)))
-		(perject--current)
-	  ;; Let the user select from the projects of the current collection only if
-	  ;; not all of them are already associated with the buffer.
-	  (if-let (((or (not current-prefix-arg) (eq current-prefix-arg '(4))))
-			   (col (car (perject--current)))
-			   (projects (cl-remove-if-not
-						  (apply-partially #'perject--is-assoc-with (current-buffer))
-						  (perject--list-projects col))))
-		  (perject--get-project-name
-		   "Remove buffer from project: " projects nil t nil nil
-		   "No project specified")
-		(perject--get-project-name
-		 "Remove buffer from project: " 'all
-		 (apply-partially #'perject--is-assoc-with (current-buffer))
-		 t nil
-		 "The buffer is currently not associated with any project"
-		 "No project specified")))
-	(member 'remove-buffer perject-messages)))
-  (unless (perject--is-assoc-with buffer proj)
-	(user-error "Buffer '%s' is not associated with project '%s'."
-                (buffer-name buffer) (perject-project-to-string proj)))
-  (with-current-buffer buffer
-	(setq perject-buffer (delete proj perject-buffer)))
-  (when msg
-    (message "Removed buffer '%s' from project '%s'."
-			 (buffer-name buffer) (perject-project-to-string proj)))
-  (when (and
-		 (null (perject--get-buffers proj))
-		 (or (eq perject-empty-project-delete t)
-			 (and (eq perject-empty-project-delete 'ask)
-                  (y-or-n-p
-				   (format
-					"Project '%s' is not associated with any buffers anymore. Delete it?"
-					(perject-project-to-string proj))))
-			 (and (functionp perject-empty-project-delete)
-				  (funcall perject-empty-project-delete proj))))
-    (let (perject-confirmation)
-      (perject-delete-collection name))))
-
-
-;;;; Managing Collections
-
-(defun perject-rename-collection (old-name new-name)
-  "Rename the collection named OLD-NAME to NEW-NAME.
-In interactive use, the user is asked for both collection names."
-  (interactive
-   (list
-    (perject--get-collection-name
-     "Select collection to rename: " 'active nil t (car (perject--current))
-     "There currently is no collection to rename"
-	 "No collection specified")
-    (perject--get-new-collection-name "New name: ")))
-  (dolist (frame (frame-list))
-	(when (perject--is-assoc-with frame old-name)
-	  (perject--set-current (cons new-name (cdr (perject--current frame))) frame)))
-  (setcar (assoc old-name perject-collections) new-name)
-  (dolist (buffer (buffer-list))
-	(with-current-buffer buffer
-	  (setq perject-buffer
-			(mapcar (lambda (proj)
-					  (if (string-equal (car proj) old-name)
-						  (cons new-name (cdr proj))
-						proj))
-					perject-buffer))))
-  (when (file-exists-p (perject--get-collection-dir old-name))
-	(rename-file (perject--get-collection-dir old-name)
-				 (perject--get-collection-dir new-name))))
-
-(defun perject-delete-collection (name &optional kill-buffers)
-  "Delete the collection named NAME.
-This includes closing the collection and deleting all corresponding projects and
-the corresponding desktop file. In interactive use, the user is asked for NAME.
-The variable `perject-confirmation' determines whether the user is asked for
-confirmation before deleting the collection.
-If the optional argument KILL-BUFFERS is non-nil, kill all buffers that belong
-to that collection and to no other collection or project. In interactive use,
-the prefix argument determines this variable as specified by
-`perject-kill-buffers-by-default'.
-The variable `perject-confirmation-kill-buffers' decides if the user is asked
-for confirmation before any buffers are killed.
-An error is thrown if there is no collection to delete or all the open frames
-belong to the selected collection."
-  (interactive
-   (list
-    (perject--get-collection-name
-     "Delete collection: " 'active nil t (car (perject--current))
-     "There currently is no collection to delete"
-	 "No collection specified")
-    (or (and (member 'delete perject-kill-buffers-by-default) (not current-prefix-arg))
-		(and (not (member 'delete perject-kill-buffers-by-default)) current-prefix-arg))))
-  (when (or (not (member 'delete perject-confirmation))
-            (y-or-n-p (format "Deleting collection '%s'. Are you sure?" name)))
-    ;; If the collection is active, close it.
-    (when (perject--collection-p name 'active)
-      (let ((perject-confirmation-kill-buffers
-			 (and (member 'delete perject-confirmation-kill-buffers)
-				  (list 'close)))
-			perject-save-on-close perject-confirmation)
-        (perject-close-collection name kill-buffers)))
-    (when (file-exists-p (perject--get-collection-dir name))
-      (delete-directory (perject--get-collection-dir name) t))))
-
 (defun perject-save-collection (name &optional release-lock no-msg)
   "Save the collection named NAME.
 In interactive use, if a prefix argument is supplied or the current frame is not
@@ -1116,182 +1118,119 @@ messages are printed."
 	  (message "Perject: Saved collections: %s" (string-join collections ", ")))))
 
 
-;;;; Managing Projects
+;;;; Switching
 
-(defun perject-switch-project (proj &optional msg)
-  "Switch to the project PROJ within the current collection.
-PROJ may either be a project name within the current collection or a dotted pair
-with car the current collection name and cdr a project name.
-If no such project exists, create it. If PROJ is nil, deselect the
-current project and only focus on the current collection.
-If the optional argument MSG is non-nil, also print an informative message.
-In interactive use, this is determined by `perject-messages'."
+(defun perject-switch (proj &optional frame msg)
+  "Switch to PROJ in the frame FRAME.
+PROJ may either be a collection or a project. The latter is represented by a
+dotted pair with car a collection and cdr a project name. PROJ may also be nil,
+in that case, remove the current collection and project (if any) from the frame,
+so that it does not belong to any collection anymore. If MSG is non-nil, also
+print a message.
+If the specified project or collection does not exist, create it.
+
+In interactive use, the current frame is used, the user is asked for PROJ
+and MSG is determined by the variable `perject-messages'. Without a prefix
+argument, the user may specify a project from the current collection. If there
+is no current collection or if a single prefix argument was supplied, let the
+user switch to an arbitrary project. In any other case, the user may select a
+collection to switch to.
+
+This function runs the hooks `perject-before-switch-hook' and
+`perject-after-switch-hook'. If a new collection or
+project was created, it furthermore runs the hooks `perject-before-create-hook'
+and `perject-after-create-hook'."
   (interactive
-   (progn
-	  (perject-assert-collection)
-	  (list (perject--get-project-name "Switch to project (or create new one): " 'current nil nil nil
-									   nil #'ignore)
-			(member 'switch-project perject-messages))))
-  (let ((proj (if (or (not proj) (stringp proj))
-				  (cons (car (perject--current)) proj)
-				proj)))
-	;; If the project does not exist yet, add it to the end of the current collection.
-	(when (and (cdr proj) (not (perject--project-p proj)))
-	  (setcdr
-	   (assoc (car proj) perject-collections)
-	   (append (alist-get (car proj) perject-collections nil nil #'string-equal)
-			   (list (cdr proj)))))
-	(perject--set-current proj)
+   (list
+	(cond
+	 ((and current-prefix-arg (not (equal current-prefix-arg '(4))))
+	  (perject--get-collection-name
+	   "Switch to collection (or create new one): " 'active
+	   ;; If we already have a collection focused, do not include it in the list.
+	   (unless (cdr (perject--current))
+		 (-compose #'not (apply-partially #'perject--is-assoc-with (selected-frame))))
+	   nil nil nil #'ignore))
+	 ((and (not current-prefix-arg) (perject--current))
+	  (let ((proj
+			 (perject--get-project-name
+			  "Switch to project (or create new one): " 'current
+			  (-compose #'not (apply-partially #'perject--is-assoc-with (selected-frame)))
+			  nil nil nil #'ignore)))
+		(pcase proj
+		  ('nil (car (perject--current)))
+		  ((pred stringp) (cons (car (perject--current)) proj))
+		  (_ proj))))
+	 (t
+	  (perject--get-project-name
+	   "Switch to project: " 'all
+	   (-compose #'not (apply-partially #'perject--is-assoc-with (selected-frame)))
+	   t nil "No project to switch to" "No project specified")))
+	(selected-frame)
+	(memq 'switch perject-messages)))
+
+  (let ((proj (if (and (consp proj) (not (cdr proj))) (car proj) proj))
+		(frame (or frame (selected-frame)))
+		(old-proj (if (cdr (perject--current frame)) (perject--current frame)
+					(car (perject--current frame)))))
+	(run-hook-with-args 'perject-before-switch-hook old-proj proj frame)
+	;; Create the project or collection if not already existent.
+	(when (or (and (stringp proj) (not (perject--collection-p proj)))
+			  (and (consp proj) (not (perject--project-p proj))))
+		(perject-create proj))
+	(perject--set-current proj frame)
 	(when msg
-	  (if (cdr proj)
-		  (message "Switched to project '%s'." (perject-project-to-string proj))
-		(message "Switch to collection '%s'." (car proj))))))
+	  (let ((is-current (equal frame (selected-frame))))
+		(cl-flet ((fun (proj)
+					(if (stringp proj)
+						(concat "collection '" proj "'")
+					  (concat "project '" (perject-project-to-string proj) "'"))))
+		  (cond
+		   ((and proj old-proj)
+			(message "Switched from %s to %s in %sframe"
+					 (fun old-proj) (fun proj) (if is-current "current " "")))
+		   (proj
+			(message "Switched to %s in %sframe" (fun proj) (if is-current "current " "")))
+		   (old-proj
+			(message "Removed %sframe from %s" (if is-current "current " "") (fun old-proj)))
+		   (t
+			(message "%s is not associated with a collection"
+					 (if is-current "Current frame" "Frame")))))))
+	(run-hook-with-args 'perject-after-switch-hook old-proj proj frame)))
 
 (defun perject-switch-to-next-project (&optional msg)
   "Switch to the next project within the current collection.
 If there is no current collection, throw an error.
 If the optional argument MSG is non-nil, also print an informative message.
-In interactive use, this is determined by `perject-messages'."
+In interactive use, this is determined by `perject-messages'.
+
+This function runs the hooks `perject-before-switch-hook' and
+`perject-after-switch-hook'."
   (interactive (list (member 'next-project perject-messages)))
-  (perject-assert-collection)
-  (let ((projects (alist-get (car (perject--current)) perject-collections nil nil #'string-equal))
+  (let ((projects (alist-get (perject-assert-collection) perject-collections nil nil #'string-equal))
 		(current (cdr (perject--current))))
 	(unless projects
 	  (user-error "The current collection has no associated projects"))
 	(let ((index (or (and current (cl-position current projects)) 0)))
-	  (perject-switch-project (nth (mod (1+ index) (length projects)) projects) msg))))
+	  (perject-switch (nth (mod (1+ index) (length projects)) projects) nil msg))))
 
 (defun perject-switch-to-previous-project (&optional msg)
   "Switch to the previous project within the current collection.
 If there is no current collection, throw an error.
 If the optional argument MSG is non-nil, also print an informative message.
-In interactive use, this is determined by `perject-messages'."
+In interactive use, this is determined by `perject-messages'.
+
+This function runs the hooks `perject-before-switch-hook' and
+`perject-after-switch-hook'."
   (interactive (list (member 'previous-project perject-messages)))
-  (perject-assert-collection)
-  (let ((projects (alist-get (car (perject--current)) perject-collections nil nil #'string-equal))
+  (let ((projects (alist-get (perject-assert-collection) perject-collections nil nil #'string-equal))
 		(current (cdr (perject--current))))
 	(unless projects
 	  (user-error "The current collection has no associated projects"))
 	(let ((index (or (and current (cl-position current projects)) 0)))
-	  (perject-switch-project (nth (mod (1- index) (length projects)) projects) msg))))
-
-(defun perject-rename-project (proj new-proj)
-  "Rename the project PROJ to NEW-PROJ.
-PROJ and NEW-PROJ are both dotted pairs with car a collection and cdr a project
-name. NEW-PROJ may also be a string to be used as the new project name within
-the same collection.
-In interactive use, the user is asked for the project to rename and for the new
-name. If a prefix argument is supplied, the user is also asked to select a
-collection to move PROJ into."
-  (interactive
-   (let* ((proj
-		   (perject--get-project-name
-			"Select project to rename: " 'all nil t (perject--current)
-			"There currently is no project to rename"
-			"No project specified"))
-		  (col
-		   (if current-prefix-arg
-			   (perject--get-collection-name
-				"Select a collection to move the project to: " 'active nil t
-				(car (perject--current))
-				nil
-				"No collection specified")
-			 (car proj))))
-	 (list
-	  proj
-	  (cons col (perject--get-new-project-name
-				 col (format "New name of project '%s' in collection '%s': " (cdr proj) col))))))
-  (let* ((old-col (car proj))
-		 (old-name (cdr proj))
-		 (new-col (if (stringp new-proj) old-col (car new-proj)))
-		 (new-name (if (stringp new-proj) new-proj (cdr new-proj)))
-		 (new-proj (cons new-col new-name))
-		 (old-col-list (assoc old-col perject-collections)))
-	(dolist (frame (frame-list))
-	  (when (perject--is-assoc-with frame proj)
-		(perject--set-current new-proj frame)))
-	(if (string-equal old-col new-col)
-		(setcdr old-col-list (cl-substitute new-name old-name (cdr old-col-list) :test #'equal))
-	  (setcdr old-col-list (delete old-name (cdr old-col-list)))
-	  (push new-name (alist-get new-col perject-collections nil nil #'string-equal)))
-	(dolist (buffer (perject--get-buffers proj))
-	  (with-current-buffer buffer
-		(setq perject-buffer (cl-substitute new-proj proj perject-buffer :test #'equal))))))
-
-(defun perject-delete-project (proj &optional kill-buffers)
-  "Delete the project PROJ.
-In interactive use, the user is asked for PROJ.
-The variable `perject-confirmation' determines whether the user is asked for
-confirmation before deleting the project.
-If the optional argument KILL-BUFFERS is non-nil, kill all buffers that belong
-to that collection and to no other project. In interactive use, the prefix
-argument determines this variable as specified by
-`perject-kill-buffers-by-default'.
-The variable `perject-confirmation-kill-buffers' decides if the user is asked
-for confirmation before any buffers are killed.
-An error is thrown if there is no project to delete.
-This function runs the hooks `perject-before-delete-project-hook' and
-`perject-after-delete-project-hook'."
-  (interactive
-   (list
-    (perject--get-project-name
-     "Delete project: " 'all nil t (perject--current)
-     "There currently is no project to delete"
-	 "No project specified")
-    (or (and (member 'delete-project perject-kill-buffers-by-default) (not current-prefix-arg))
-		(and (not (member 'delete-project perject-kill-buffers-by-default)) current-prefix-arg))))
-  (when (or (not (member 'delete-project perject-confirmation))
-            (y-or-n-p (format "Deleting project '%s'. Are you sure?"
-							  (perject-project-to-string proj))))
-	(let ((buffers (perject--get-buffers proj))
-		  buffers-to-kill)
-	  (run-hook-with-args 'perject-before-delete-project-hook proj buffers)
-	  ;; Remove the project from the list of active collections.
-	  (let ((col (assoc (car proj) perject-collections)))
-		(setcdr col (delete (cdr proj) (cdr col))))
-	  ;; Remove all buffers from the project.
-	  (dolist (buffer buffers)
-		(with-current-buffer buffer
-		  (setq perject-buffer (delete proj perject-buffer))
-		  (unless perject-buffer
-			(push buffer buffers-to-kill))))
-	  (when (and kill-buffers
-				 buffers-to-kill
-				 (or (not (member 'delete-project perject-confirmation-kill-buffers))
-					 (y-or-n-p (format "Kill buffers belonging only to project '%s'?"
-									   (perject-project-to-string proj)))))
-		(dolist (buffer buffers-to-kill)
-		  (kill-buffer buffer))
-		(setq buffers (cl-set-difference buffers buffers-to-kill)))
-	  (run-hook-with-args 'perject-after-delete-project-hook proj buffers))))
-
-(defun perject-print-buffer-projects (&optional buffer)
-  "Print the names of the projects with which the buffer BUFFER is associated.
-If nil, BUFFER defaults to the current buffer, which is also its value in
-interactive use."
-  (interactive)
-  (let ((buffer (or buffer (current-buffer)))
-		(buffer-name (buffer-name buffer)))
-	(pcase (buffer-local-value 'perject-buffer buffer)
-	  ('nil
-	   (message "The buffer '%s' is not associated with any projects." buffer-name))
-	  (`(,project)
-	   (message "The buffer '%s' is associated with the project '%s'." buffer-name (perject-project-to-string project)))
-	  (projects
-	   (message "The buffer '%s' is associated with the projects: %s."
-				buffer-name
-				(string-join (mapcar #'perject-project-to-string projects) ", "))))))
-
-(defun perject-project-to-string (proj)
-  "Return a string representing the project PROJ.
-PROJ is a dotted pair with car a collection and cdr a project name.
-Which string is returned is determined by `perject-project-format'."
-  (if (stringp perject-project-format)
-	  (format perject-project-format (car proj) (cdr proj))
-	(funcall perject-project-format (car proj) (cdr proj))))
+	  (perject-switch (nth (mod (1- index) (length projects)) projects) nil msg))))
 
 
-;;;; Sorting Collections and Projects
+;;;; Sorting
 
 (transient-define-prefix perject-sort-collections ()
   "Transient menu to sort the active collections.
@@ -1452,6 +1391,158 @@ The collection is determined by `perject--sort-projects-index'."
 			 (length (alist-get (car (perject--current)) perject-collections nil nil #'string-equal)))))
 
 
+;;;; Managing Buffers
+
+(defun perject-add-buffer-to-project (buffer proj &optional msg)
+  "Add the buffer BUFFER to the project PROJ.
+PROJ is a dotted pair with car a collection name and cdr a project name. If MSG
+is non-nil, also display a message upon completion.
+In interactive use, the current buffer is added to the current project. If a
+single prefix argument is supplied or if the current frame is not associated
+with any project, the user is asked to choose the project from the current
+collection. In any other case the user may choose from the list of all projects
+from all active collections.
+In interactive use, depending on the value of `perject-messages', a message is
+printed upon successfully adding the buffer to the project.
+If the buffer is already associated with the project, an error is thrown.
+Note that this function does not check whether PROJ is an existent project and
+whether BUFFER has already been killed, so caller functions should take care of
+that."
+  (interactive
+   (list
+	(current-buffer)
+	(if (and (not current-prefix-arg) (cdr (perject--current)))
+		(perject--current)
+	  ;; Let the user select from the projects of the current collection only if
+	  ;; not all of them are already associated with the buffer.
+	  (if-let (((or (not current-prefix-arg) (equal current-prefix-arg '(4))))
+			   (col (car (perject--current)))
+			   (projects (cl-remove-if
+						  (apply-partially #'perject--is-assoc-with (current-buffer))
+						  (perject--list-projects col))))
+		  (perject--get-project-name
+		   "Add buffer to project: " projects nil t nil nil
+		   "No project specified")
+		(perject--get-project-name
+		 "Add buffer to project: " 'all
+		 (-compose 'not (apply-partially #'perject--is-assoc-with (current-buffer)))
+		 t nil
+		 "All projects are already associated with the current buffer"
+		 "No project specified")))
+    (member 'add-buffer perject-messages)))
+  (when (perject--is-assoc-with buffer proj)
+	(user-error "Buffer '%s' is already associated with project '%s'."
+                (buffer-name buffer) (perject-project-to-string proj)))
+  (with-current-buffer buffer
+	(push proj perject-buffer))
+  (when msg
+    (message "Added buffer '%s' to project '%s'."
+			 (buffer-name buffer) (perject-project-to-string proj))))
+
+
+(defun perject--auto-add-buffer (&optional ignore)
+  "Silently add the current buffer to projects honoring `perject-auto-add-function'.
+If IGNORE is non-nil, simply add the current buffer to the current project;
+i.e. act as if `perject-auto-add-function' was nil.
+Does nothing to projects that are already associated with the buffer."
+  (let ((buffer (current-buffer)))
+	(if (or ignore (not perject-auto-add-function))
+		(let ((project (perject--current)))
+		  (when (and (cdr project) (not (perject--is-assoc-with buffer project)))
+			(perject-add-buffer-to-project buffer project)))
+	  (dolist (project (funcall perject-auto-add-function buffer (perject--current)))
+		(when (and (perject--project-p project)
+				   (not (perject--is-assoc-with buffer project)))
+		  (perject-add-buffer-to-project buffer project))))))
+
+
+(defun perject-remove-buffer-from-project (buffer proj &optional msg)
+  "Remove the buffer BUFFER from the project PROJ.
+PROJ is a dotted pair with car a collection name and cdr a project name. If MSG
+is non-nil, also display a message upon completion.
+In interactive use, the current buffer is removed from the current project. If a
+prefix argument is supplied or if the current frame is not associated with any
+project, the user is asked to choose the project from the list of all projects
+that are currently associated with BUFFER.
+In interactive use, depending on the value of `perject-messages', a message is
+printed upon successfully removing the buffer from the project.
+If the buffer is not associated with the project, an error is thrown.
+Note that this function does not check whether PROJ is an existent project and
+whether BUFFER has already been killed, so caller functions should take care of
+that.
+The variable `perject-empty-project-delete' determines what happens if the last
+buffer of a project is removed."
+  (interactive
+   (list
+	(current-buffer)
+	(if (and (not current-prefix-arg) (cdr (perject--current)))
+		(perject--current)
+	  ;; Let the user select from the projects of the current collection only if
+	  ;; not all of them are already associated with the buffer.
+	  (if-let (((or (not current-prefix-arg) (equal current-prefix-arg '(4))))
+			   (col (car (perject--current)))
+			   (projects (cl-remove-if-not
+						  (apply-partially #'perject--is-assoc-with (current-buffer))
+						  (perject--list-projects col))))
+		  (perject--get-project-name
+		   "Remove buffer from project: " projects nil t nil nil
+		   "No project specified")
+		(perject--get-project-name
+		 "Remove buffer from project: " 'all
+		 (apply-partially #'perject--is-assoc-with (current-buffer))
+		 t nil
+		 "The buffer is currently not associated with any project"
+		 "No project specified")))
+	(member 'remove-buffer perject-messages)))
+  (unless (perject--is-assoc-with buffer proj)
+	(user-error "Buffer '%s' is not associated with project '%s'."
+                (buffer-name buffer) (perject-project-to-string proj)))
+  (with-current-buffer buffer
+	(setq perject-buffer (delete proj perject-buffer)))
+  (when msg
+    (message "Removed buffer '%s' from project '%s'."
+			 (buffer-name buffer) (perject-project-to-string proj)))
+  (when (and
+		 (null (perject--get-buffers proj))
+		 (or (eq perject-empty-project-delete t)
+			 (and (eq perject-empty-project-delete 'ask)
+                  (y-or-n-p
+				   (format
+					"Project '%s' is not associated with any buffers anymore. Delete it?"
+					(perject-project-to-string proj))))
+			 (and (functionp perject-empty-project-delete)
+				  (funcall perject-empty-project-delete proj))))
+    (let (perject-confirmation)
+      (perject-delete-collection name))))
+
+;;;; Public Interface
+
+(defun perject-print-buffer-projects (&optional buffer)
+  "Print the names of the projects with which the buffer BUFFER is associated.
+If nil, BUFFER defaults to the current buffer, which is also its value in
+interactive use."
+  (interactive)
+  (let ((buffer (or buffer (current-buffer)))
+		(buffer-name (buffer-name buffer)))
+	(pcase (buffer-local-value 'perject-buffer buffer)
+	  ('nil
+	   (message "The buffer '%s' is not associated with any projects." buffer-name))
+	  (`(,project)
+	   (message "The buffer '%s' is associated with the project '%s'." buffer-name (perject-project-to-string project)))
+	  (projects
+	   (message "The buffer '%s' is associated with the projects: %s."
+				buffer-name
+				(string-join (mapcar #'perject-project-to-string projects) ", "))))))
+
+(defun perject-project-to-string (proj)
+  "Return a string representing the project PROJ.
+PROJ is a dotted pair with car a collection and cdr a project name.
+Which string is returned is determined by `perject-project-format'."
+  (if (stringp perject-project-format)
+	  (format perject-project-format (car proj) (cdr proj))
+	(funcall perject-project-format (car proj) (cdr proj))))
+
+
 ;;;; Internal Interface
 
 (defun perject--current (&optional frame)
@@ -1464,8 +1555,8 @@ name."
 (defun perject--set-current (proj &optional frame)
   "Set the collection and project of the frame FRAME to PROJ.
 PROJ may be a dotted pair with car the collection and cdr the project name.
-It may alternatively be a collection name.
-If PROJ is nil, the frame will no longer belong to a collection.
+It may alternatively be a collection name or nil. In the latter case, the frame
+will no longer belong to a collection or project.
 If FRAME is nil, it defaults to the selected frame."
   (let ((proj (if (stringp proj) (cons proj nil) proj)))
 	(set-frame-parameter frame 'perject-project proj)

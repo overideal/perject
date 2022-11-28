@@ -8,7 +8,7 @@
 ;; from projects in the ibuffer interface.
 
 
-;;;  Code
+;;;  Code:
 
 (require 'perject)
 (require 'ibuffer)

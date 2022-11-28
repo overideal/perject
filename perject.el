@@ -209,7 +209,7 @@ newly created frame."
 		  (const :tag "Switch after reloading a project using `perject-reload-collection'" reload)))
 
 (defcustom perject-messages
-  '(add-buffer remove-buffer next-project previous-project)
+  '(add-buffer remove-buffer next-collection previous-collection next-project previous-project)
   "Whether to print informative messages when performing certain actions.
 The value of this variable is a list which may contain any of the following
 symbols, whose presence in the list leads to a message being printed in the
@@ -217,14 +217,18 @@ indicated command:
 - 'add-buffer: `perject-add-buffer-to-project',
 - 'remove-buffer: `perject-remove-buffer-from-project',
 - 'switch: `perject-switch',
-- 'next-project: `perject-switch-to-next-project',
-- 'previous-project: `perject-switch-to-previous-project'."
+- 'next-collection `perject-next-collection',
+- 'previous-collection `perject-previous-collection',
+- 'next-project: `perject-next-project',
+- 'previous-project: `perject-previous-project'."
   :type '(set
 		  (const :tag "`perject-add-buffer-to-project'" add-buffer)
 		  (const :tag "`perject-remove-buffer-from-project'" remove-buffer)
-		  (const :tag "`perject-switch'")
-		  (const :tag "`perject-switch-to-next-project'" next-project)
-		  (const :tag "`perject-switch-to-previous-project'." previous-project)))
+		  (const :tag "`perject-switch'" switch)
+		  (const :tag "`perject-next-collection'" next-collection)
+		  (const :tag "`perject-previous-collection'" previous-collection)
+		  (const :tag "`perject-next-project'" next-project)
+		  (const :tag "`perject-previous-project'." previous-project)))
 
 (defcustom perject-confirmation '(delete delete-project)
   "Whether to ask for confirmation before performing certain actions.
@@ -403,17 +407,19 @@ creating the project."
 
 (defcustom perject-before-close-hook nil
   "Hook run before perject closes a collection using `perject-close-collection'.
-The functions are called with two arguments, namely the name of the collection
-to be closed and a list containing all buffers currently associated with some
-project of this collection.
+The functions are called with three arguments, namely the name of the collection
+to be closed, a list of all frames that belong to the collection and a list
+containing all buffers currently associated with some project of this
+collection.
 Do not kill any of those buffers in this hook. Use `perject-after-close-hook'
 for that purpose."
   :type 'hook)
 
 (defcustom perject-after-close-hook nil
   "Hook run after perject has closed a collection using `perject-close-collection'.
-The functions are called with two arguments, namely the name of the closed
-collection and a list containing all buffers that were associated with some
+The functions are called with three arguments, namely the name of the closed
+collection, a list of all frames that belonged to the collection and have not
+been killed and a list containing all buffers that were associated with some
 project of this collection and that have not been killed."
   :type 'hook)
 
@@ -450,18 +456,19 @@ collection."
 
 (defcustom perject-before-delete-project-hook nil
   "Hook run before perject deletes a project using `perject-delete-project'.
-The functions are called with two arguments, namely the name of the project to
-be deleted and a list containing all buffers that are currently associated with
-this project.
-Do not kill any of those buffers in this hook. Use
+The functions are called with three arguments, namely the name of the project to
+be deleted, a list of frames that currently display this project and a list
+containing all buffers that are currently associated with this project.
+Do not kill any of those frames or buffers in this hook. Use
 `perject-after-delete-project-hook' for that purpose."
   :type 'hook)
 
 (defcustom perject-after-delete-project-hook nil
   "Hook run after perject has deleted a project using `perject-delete-project'.
-The functions are called with two arguments, namely the name of the deleted
-project and a list containing all buffers that were associated with some project
-of this project and that have not been killed."
+The functions are called with three arguments, namely the name of the deleted
+project, a list of frames that were associated with this project and have not
+been killed and a list containing all buffers that were associated with this
+project that have not been killed."
   :type 'hook)
 
 (defcustom perject-desktop-after-load-hook nil
@@ -857,8 +864,9 @@ This function runs the hooks `perject-before-delete-project-hook' and
             (y-or-n-p (format "Deleting project '%s'. Are you sure?"
 							  (perject-project-to-string proj))))
 	(let ((buffers (perject--get-buffers proj))
+		  (frames (perject--get-frames proj))
 		  buffers-to-kill)
-	  (run-hook-with-args 'perject-before-delete-project-hook proj buffers)
+	  (run-hook-with-args 'perject-before-delete-project-hook proj frames buffers)
 	  ;; Remove the project from the list of active collections.
 	  (let ((col (assoc (car proj) perject-collections)))
 		(setcdr col (delete (cdr proj) (cdr col))))
@@ -868,6 +876,9 @@ This function runs the hooks `perject-before-delete-project-hook' and
 		  (setq perject-buffer (delete proj perject-buffer))
 		  (unless perject-buffer
 			(push buffer buffers-to-kill))))
+	  ;; Deal with the frames belonging to the project.
+	  (dolist (frame frames)
+		(perject--set-current nil frame))
 	  (when (and kill-buffers
 				 buffers-to-kill
 				 (or (not (member 'delete-project perject-confirmation-kill-buffers))
@@ -876,7 +887,7 @@ This function runs the hooks `perject-before-delete-project-hook' and
 		(dolist (buffer buffers-to-kill)
 		  (kill-buffer buffer))
 		(setq buffers (cl-set-difference buffers buffers-to-kill)))
-	  (run-hook-with-args 'perject-after-delete-project-hook proj buffers))))
+	  (run-hook-with-args 'perject-after-delete-project-hook proj frames buffers))))
 
 
 ;;;; Opening, Closing and Saving
@@ -988,8 +999,9 @@ This function runs the hooks `perject-before-close-hook' and
 			   (not keep-frames))
       (user-error "Cannot close a collection which belongs to all open frames"))
 	(let ((buffers (perject--get-buffers name))
+		  (frames (perject--get-frames name))
 		  buffers-to-kill)
-      (run-hook-with-args 'perject-before-close-hook name buffers)
+      (run-hook-with-args 'perject-before-close-hook name frames buffers)
       (if (or (eq perject-save-on-close t)
               (and (eq perject-save-on-close 'ask)
                    (y-or-n-p (format "Save the collection '%s'? " name)))
@@ -1009,9 +1021,9 @@ This function runs the hooks `perject-before-close-hook' and
 		  (unless perject-buffer
 			(push buffer buffers-to-kill))))
 	  ;; Delete the frames unless requested otherwise.
-      (unless keep-frames
-		(dolist (frame (perject--get-frames name))
-          (delete-frame frame)))
+	  (dolist (frame frames)
+		(if keep-frames (perject--set-current nil frame) (delete-frame frame)))
+	  (unless keep-frames (setq frames nil))
 	  (when (and kill-buffers
 				 buffers-to-kill
 				 (or (not (member 'close perject-confirmation-kill-buffers))
@@ -1019,7 +1031,7 @@ This function runs the hooks `perject-before-close-hook' and
 		(dolist (buffer buffers-to-kill)
 		  (kill-buffer buffer))
 		(setq buffers (cl-set-difference buffers buffers-to-kill)))
-      (run-hook-with-args 'perject-after-close-hook name buffers))))
+      (run-hook-with-args 'perject-after-close-hook name frames buffers))))
 
 (defun perject-reload-collection (name &optional kill-buffers)
   "Reload the collection named NAME from its desktop file.
@@ -1197,10 +1209,42 @@ and `perject-after-create-hook'."
 					 (if is-current "Current frame" "Frame")))))))
 	(run-hook-with-args 'perject-after-switch-hook old-proj proj frame)))
 
-(defun perject-switch-to-next-project (&optional msg)
+(defun perject-next-collection (&optional msg)
+  "Switch to the next active collection.
+If there are no active collections, throw an error. If the optional argument MSG
+is non-nil, also print an informative message.
+In interactive use, this is determined by `perject-messages'.
+
+This function runs the hooks `perject-before-switch-hook' and
+`perject-after-switch-hook'."
+  (interactive (list (member 'next-collection perject-messages)))
+  (let ((collections (perject--list-collections 'active))
+		(current (car (perject--current))))
+	(unless collections
+	  (user-error "There currently are no collections"))
+	(let ((index (or (and current (cl-position current collections)) 0)))
+	  (perject-switch (nth (mod (1+ index) (length collections)) collections) nil msg))))
+
+(defun perject-previous-collection (&optional msg)
+  "Switch to the previous active collection.
+If there are no active collections, throw an error. If the optional argument MSG
+is non-nil, also print an informative message.
+In interactive use, this is determined by `perject-messages'.
+
+This function runs the hooks `perject-before-switch-hook' and
+`perject-after-switch-hook'."
+  (interactive (list (member 'previous-collection perject-messages)))
+  (let ((collections (perject--list-collections 'active))
+		(current (car (perject--current))))
+	(unless collections
+	  (user-error "There currently are no collections"))
+	(let ((index (or (and current (cl-position current collections)) 0)))
+	  (perject-switch (nth (mod (1- index) (length collections)) collections) nil msg))))
+
+(defun perject-next-project (&optional msg)
   "Switch to the next project within the current collection.
-If there is no current collection, throw an error.
-If the optional argument MSG is non-nil, also print an informative message.
+If there is no current collection, throw an error. If the optional argument MSG
+is non-nil, also print an informative message.
 In interactive use, this is determined by `perject-messages'.
 
 This function runs the hooks `perject-before-switch-hook' and
@@ -1210,13 +1254,14 @@ This function runs the hooks `perject-before-switch-hook' and
 		(current (cdr (perject--current))))
 	(unless projects
 	  (user-error "The current collection has no associated projects"))
-	(let ((index (or (and current (cl-position current projects)) 0)))
-	  (perject-switch (nth (mod (1+ index) (length projects)) projects) nil msg))))
+	(let* ((index (or (and current (cl-position current projects)) 0))
+		   (proj (cons (car (perject--current)) (nth (mod (1+ index) (length projects)) projects))))
+	  (perject-switch proj nil msg))))
 
-(defun perject-switch-to-previous-project (&optional msg)
+(defun perject-previous-project (&optional msg)
   "Switch to the previous project within the current collection.
-If there is no current collection, throw an error.
-If the optional argument MSG is non-nil, also print an informative message.
+If there is no current collection, throw an error. If the optional argument MSG
+is non-nil, also print an informative message.
 In interactive use, this is determined by `perject-messages'.
 
 This function runs the hooks `perject-before-switch-hook' and
@@ -1226,8 +1271,9 @@ This function runs the hooks `perject-before-switch-hook' and
 		(current (cdr (perject--current))))
 	(unless projects
 	  (user-error "The current collection has no associated projects"))
-	(let ((index (or (and current (cl-position current projects)) 0)))
-	  (perject-switch (nth (mod (1- index) (length projects)) projects) nil msg))))
+	(let* ((index (or (and current (cl-position current projects)) 0))
+		   (proj (cons (car (perject--current)) (nth (mod (1- index) (length projects)) projects))))
+	  (perject-switch proj nil msg))))
 
 
 ;;;; Sorting
@@ -1235,7 +1281,8 @@ This function runs the hooks `perject-before-switch-hook' and
 (transient-define-prefix perject-sort-collections ()
   "Transient menu to sort the active collections.
 This is for example useful to influence the order in which collections are
-loaded."
+loaded and to influence the order used for `perject-next-collection' and
+`perject-previous-collection'."
   [:description
    (lambda ()
 	 (let ((col (perject--list-collections 'active)))
@@ -1310,7 +1357,7 @@ The collection is determined by `perject--sort-collections-index'."
 (transient-define-prefix perject-sort-projects ()
   "Transient menu to sort the projects of the current collection.
 This is for example useful to influence the order used for
-`perject-switch-to-next-project' and `perject-switch-to-previous-project'."
+`perject-next-project' and `perject-previous-project'."
   [:description
    (lambda ()
 	 (perject-assert-collection)

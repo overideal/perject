@@ -4,7 +4,7 @@
 
 ;; Author: overideal
 ;; Maintainer: overideal
-;; Version: 2.0
+;; Version: 3.0
 ;; Package-Requires: ((emacs "27.1") (dash "2.12"))
 ;; Homepage: https://gitlab.com/overideal/perject
 
@@ -51,6 +51,10 @@ Write '--perject \"\"' if no projects should be opened.")
 
 (defface perject-project-annotator-buffers '((t :inherit completions-annotations))
   "The face used for displaying the number of buffers when selecting a collection or project.")
+
+(defface perject-project-annotator-tabs '((t :inherit completions-annotations))
+  "The face used for displaying the number of tabs when selecting a collection or project.
+The corresponding entry is only shown if `perject-tab' is loaded.")
 
 (defface perject-project-annotator-frames '((t :inherit completions-annotations))
   "The face used for displaying the number of frames when selecting a collection or project.")
@@ -1726,7 +1730,7 @@ string is interpreted to refer to the default value."
 		  `(:annotation-function
 			,(lambda (str)
 			   (concat
-				(propertize " " 'display '(space :align-to (- center 40)))
+				(propertize " " 'display '(space :align-to (- center 60)))
 				(propertize
 				 (or
 				  (and (perject--collection-p str 'active)
@@ -1740,13 +1744,21 @@ string is interpreted to refer to the default value."
 				 'face 'perject-project-annotator-main)
 				(when (perject--collection-p str 'active)
 				  (concat
-				   (propertize " " 'display '(space :align-to center))
+				   (propertize " " 'display '(space :align-to (- center 20)))
 				   (propertize
 					(format "%4d buffer%s"
 							(length (perject--get-buffers str))
 							(if (not (eq (length (perject--get-buffers str)) 1)) "s" ""))
 					'face 'perject-project-annotator-buffers)
-				   (propertize " " 'display '(space :align-to (+ center 30)))
+				   (when (featurep 'perject-tab)
+					   (concat
+						(propertize " " 'display '(space :align-to (+ center 10)))
+						(propertize
+						 (format "%2d tab%s"
+								 (length (perject-tab-collection-tabs str))
+								 (if (not (eq (length (perject-tab-collection-tabs str)) 1)) "s" ""))
+						 'face 'perject-project-annotator-tabs)))
+				   (propertize " " 'display '(space :align-to (+ center 40)))
 				   (propertize
 					(format "%4d frame%s%s"
 							(length (perject--get-frames str))
@@ -1801,6 +1813,14 @@ TYPE. It may have one of the following values:
 							  (length (perject--get-buffers proj))
 							  (if (not (eq (length (perject--get-buffers proj)) 1)) "s" ""))
 					  'face 'perject-project-annotator-buffers)
+					 (when (featurep 'perject-tab)
+					   (concat
+						(propertize " " 'display '(space :align-to center))
+						(propertize
+						 (format "%2d tab%s"
+								 (length (perject-tab-tabs proj))
+								 (if (not (eq (length (perject-tab-tabs proj)) 1)) "s" ""))
+						 'face 'perject-project-annotator-tabs)))
 					 (propertize " " 'display '(space :align-to (+ center 30)))
 					 (propertize
 					  (format "%4d frame%s%s"

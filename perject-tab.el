@@ -636,7 +636,7 @@ LENGTH is the total number of indices. If it is 0, return nil."
 
 (defun perject-tab--save (list)
   "Prepare for perject to save the tabs of the projects given by LIST."
-  ;; Projects is calculated by the same mechanism as in `perject--list-projects'.
+  ;; Projects are calculated by the same mechanism as in `perject--list-projects'.
   (let* ((projects (mapcar (apply-partially #'cons (car list)) (cdr list)))
 		 (alist (cl-remove-if-not (lambda (pair) (member (car pair) projects)) perject-tab--tabs))
 		 ;; Filter the remaining tabs like `frameset-filter-tabs' does.
@@ -658,20 +658,33 @@ LENGTH is the total number of indices. If it is 0, return nil."
 (defun perject-tab--rename (proj new-proj)
   "React to perject renaming a collection or project from PROJ to NEW-PROJ."
   (if (stringp proj)
-	  (setq perject-tab--tabs
-			(mapcar (lambda (pair)
-					  (if (equal (car pair) proj) (cons new-proj (cdr pair)) pair))
-					perject-tab--tabs))
-	(setcar (assoc proj perject-collections) new-proj)))
+	  (cl-flet ((fun (elem)
+				  (if (equal (caar elem) proj)
+					  (cons (cons new-proj (cdar elem)) (cdr elem))
+					elem)))
+		(setq perject-tab--tabs
+			  (mapcar #'fun perject-tab--tabs))
+		(dolist (frame (frame-list))
+		  (set-frame-parameter frame 'perject-tab
+							   (mapcar #'fun (frame-parameter frame 'perject-tab)))))
+	(when-let ((tabs (assoc proj perject-tab--tabs)))
+	  (setcar tabs new-proj))
+	(dolist (frame (frame-list))
+	  (when-let ((indices (assoc proj (frame-parameter frame 'perject-tab))))
+		(setcar indices new-proj)))))
 
 (defun perject-tab--close-or-delete (proj &rest _)
   "React to perject closing or deleting a collection or project PROJ."
-  (setq perject-tab--tabs
-		(if (stringp proj)
-			(cl-remove-if (lambda (pair)
-							(equal (caar pair) proj))
-						  perject-tab--tabs)
-		  (assoc-delete-all proj perject-tab--tabs))))
+  (if (stringp proj)
+	  (cl-flet ((fun (elem) (equal (caar elem) proj)))
+		(setq perject-tab--tabs (cl-remove-if #'fun perject-tab--tabs))
+		(dolist (frame (frame-list))
+		  (set-frame-parameter frame 'perject-tab
+							   (cl-remove-if #'fun (frame-parameter frame 'perject-tab)))))
+	(setq perject-tab--tabs (assoc-delete-all proj perject-tab--tabs))
+	(dolist (frame (frame-list))
+	  (set-frame-parameter frame 'perject-tab
+						   (assoc-delete-all proj (frame-parameter frame 'perject-tab))))))
 
 (defun perject-tab--switch (old-proj proj frame)
   "React to perject switching from the collection or project OLD-PROJ to PROJ in frame FRAME."

@@ -1228,7 +1228,7 @@ This function runs the hooks `perject-before-switch-hook' and
 		(current (car (perject--current))))
 	(unless collections
 	  (user-error "There currently are no collections"))
-	(let ((index (or (and current (cl-position current collections)) 0)))
+	(let ((index (or (and current (cl-position current collections :test #'string-equal)) 0)))
 	  (perject-switch (nth (mod (1+ index) (length collections)) collections) nil msg))))
 
 (defun perject-previous-collection (&optional msg)
@@ -1244,7 +1244,7 @@ This function runs the hooks `perject-before-switch-hook' and
 		(current (car (perject--current))))
 	(unless collections
 	  (user-error "There currently are no collections"))
-	(let ((index (or (and current (cl-position current collections)) 0)))
+	(let ((index (or (and current (cl-position current collections :test #'string-equal)) 0)))
 	  (perject-switch (nth (mod (1- index) (length collections)) collections) nil msg))))
 
 (defun perject-next-project (&optional msg)
@@ -1260,7 +1260,7 @@ This function runs the hooks `perject-before-switch-hook' and
 		(current (cdr (perject--current))))
 	(unless projects
 	  (user-error "The current collection has no associated projects"))
-	(let* ((index (or (and current (cl-position current projects)) 0))
+	(let* ((index (or (and current (cl-position current projects :test #'string-equal)) 0))
 		   (proj (cons (car (perject--current)) (nth (mod (1+ index) (length projects)) projects))))
 	  (perject-switch proj nil msg))))
 
@@ -1277,7 +1277,7 @@ This function runs the hooks `perject-before-switch-hook' and
 		(current (cdr (perject--current))))
 	(unless projects
 	  (user-error "The current collection has no associated projects"))
-	(let* ((index (or (and current (cl-position current projects)) 0))
+	(let* ((index (or (and current (cl-position current projects :test #'string-equal)) 0))
 		   (proj (cons (car (perject--current)) (nth (mod (1- index) (length projects)) projects))))
 	  (perject-switch proj nil msg))))
 

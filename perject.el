@@ -758,11 +758,12 @@ This function runs the hook `perject-rename-hook'."
 				   (car proj))))
 			(cons col (perject--get-new-project-name
 					   col (format "New name of project '%s' in collection '%s': " (cdr proj) col))))
-		(perject--get-new-collection-name "New name of collection '%s': " proj)))))
+		(perject--get-new-collection-name (format "New name of collection '%s': " proj))))))
   (if (stringp proj)
 	  (perject-rename-collection proj new-proj)
 	(perject-rename-project proj new-proj))
-  (run-hook-with-args 'perject-rename-hook proj new-proj))
+  (run-hook-with-args 'perject-rename-hook proj new-proj)
+  (force-mode-line-update t))
 
 (defun perject-rename-collection (old-name new-name)
   "Rename the collection named OLD-NAME to NEW-NAME."
@@ -1211,7 +1212,8 @@ and `perject-after-create-hook'."
 		   (t
 			(message "%s is not associated with a collection"
 					 (if is-current "Current frame" "Frame")))))))
-	(run-hook-with-args 'perject-after-switch-hook old-proj proj frame)))
+	(run-hook-with-args 'perject-after-switch-hook old-proj proj frame)
+	(force-mode-line-update t)))
 
 (defun perject-next-collection (&optional msg)
   "Switch to the next active collection.
@@ -1612,9 +1614,7 @@ If FRAME is nil, it defaults to the selected frame."
   (let ((proj (if (stringp proj) (cons proj nil) proj)))
 	(set-frame-parameter frame 'perject-project proj)
 	(when perject-frame-title-format
-	  (set-frame-parameter frame 'name (and proj (funcall perject-frame-title-format proj))))
-	(when perject-mode-line-format
-	  (force-mode-line-update))))
+	  (set-frame-parameter frame 'name (and proj (funcall perject-frame-title-format proj))))))
 
 (defun perject--is-assoc-with (obj proj)
   "Return a non-nil value if object OBJ is associated with PROJ.

@@ -622,7 +622,7 @@ Should not be modified by the user.")
           (push '(perject-mode
 				  (:eval
 				   (funcall perject-mode-line-format
-							 (car (perject--current)) (cdr (perject--current)))))
+							 (car (perject-current)) (cdr (perject-current)))))
                 (cdr (last mode-line-misc-info)))))
 
 	;; Remove the added hooks.
@@ -637,7 +637,7 @@ Should not be modified by the user.")
 	;; mode is enabled again.
 	(when perject-frame-title-format
 	  (dolist (frame (frame-list))
-		(when (perject--current frame)
+		(when (perject-current frame)
 		  (set-frame-parameter frame 'name nil))))))
 
 
@@ -666,7 +666,7 @@ The collections are stored in desktop files. The variable `perject-load-at-start
 determines which collections are loaded automatically. However, if specified, the
 command line option `perject-command-line-option' takes priority."
   (let* ((current-frame (selected-frame))
-         (all-collections (perject--list-collections))
+         (all-collections (perject-get-collections))
          (cols-to-load
 		  (pcase perject-load-at-startup
 			('all all-collections)
@@ -683,14 +683,14 @@ command line option `perject-command-line-option' takes priority."
 	;; We cannot use `command-switch-alist' since those functions are processed after `after-init-hook'.
 	(if-let ((index (cl-position perject-command-line-option command-line-args :test #'string-equal))
 			   (list (split-string (nth (1+ index) command-line-args) ","))
-			   (cols (-separate #'perject--collection-p list)))
+			   (cols (-separate #'perject-collection-p list)))
 		(progn
 		  (when (cadr cols)
 			(warn "Perject: The following collections do not exist: %s" (string-join (cadr cols) ", ")))
 		  (setq cols-to-load (car cols)
 				command-line-args
 				(append (seq-take command-line-args index) (seq-drop command-line-args (+ index 2)))))
-	  (let ((cols (-separate #'perject--collection-p cols-to-load)))
+	  (let ((cols (-separate #'perject-collection-p cols-to-load)))
 		(when (cadr cols)
 		  (warn "Perject: The following collections do not exist: %s" (string-join (cadr cols) ", "))
 		  (setq cols-to-load (car cols)))))
@@ -704,7 +704,7 @@ command line option `perject-command-line-option' takes priority."
 		  (perject--desktop-reuse-frames (lambda (frame)
 										   (and
 											(eq frame current-frame)
-											(not (perject--current frame)))))
+											(not (perject-current frame)))))
 		  (starting-frame-claimed (not perject-reuse-starting-frame)))
       (dolist (name cols-to-load)
 		(when (or (member current-frame perject--desktop-restored-frames)
@@ -719,7 +719,7 @@ command line option `perject-command-line-option' takes priority."
     (dolist (hook perject-auto-add-hooks)
       (add-hook hook 'perject--auto-add-buffer))
 	;; Select the last restored frame.
-	(when-let ((frames (car (last (remove 'nil (mapcar #'perject--get-frames cols-to-load))))))
+	(when-let ((frames (car (last (remove 'nil (mapcar #'perject-get-frames cols-to-load))))))
 	  (select-frame-set-input-focus (car frames))
 	  (raise-frame (car frames)))
     (run-hook-with-args 'perject-after-init-hook cols-to-load)))
@@ -731,7 +731,7 @@ This function is called by `perject-mode' before exiting Emacs (using
 `kill-emacs-hook')."
   (perject-save-collections 'exit t t)
   ;; Reverse the list of active collections, so that the newest collection is last.
-  (setq perject--previous-collections (perject--list-collections 'active)))
+  (setq perject--previous-collections (perject-get-collections 'active)))
 
 
 ;;;; Creating, Renaming and Deleting
@@ -743,14 +743,14 @@ collection and cdr a project name."
   (run-hook-with-args 'perject-before-create-hook proj)
   (if (stringp proj)
 	  (progn
-		(make-directory (perject--get-collection-dir proj) t)
+		(make-directory (perject-get-collection-dir proj) t)
 		;; The order of the collections matters and we want the new collection to
 		;; be at the rightmost position.
 		(setq perject-collections (append perject-collections (list (list proj))))
 		;; Create a desktop file.
 		(perject-save-collection proj))
 	;; If the corresponding collection does not exist yet, create it.
-	(unless (perject--collection-p (car proj))
+	(unless (perject-collection-p (car proj))
 	  (perject-create (car proj)))
 	(setcdr
 	 (assoc (car proj) perject-collections)
@@ -772,15 +772,15 @@ select from all collections."
 		(perject--get-project-name
 		 "Create new frame for project: "
 		 (if (equal current-prefix-arg '(4)) 'all 'current)
-		 nil t (perject--current)
+		 nil t (perject-current)
 		 "No project exists" "No project specified")
       (perject--get-collection-name
 	   "Create new frame for collection: "
-	   'active nil t (car (perject--current))
+	   'active nil t (car (perject-current))
 	   "No collection exists" "No collection specified"))))
   (let ((frame (make-frame)))
 	(with-selected-frame frame
-	  (perject--set-current proj))
+	  (perject-set-current proj))
 	(unless no-select (select-frame-set-input-focus frame))))
 
 (defun perject-rename (proj new-proj)
@@ -799,11 +799,11 @@ This function runs the hook `perject-rename-hook'."
    (let ((proj
 		  (if (or (not current-prefix-arg) (equal current-prefix-arg '(4)))
 			  (perject--get-project-name
-			   "Select project to rename: " 'all nil t (perject--current)
+			   "Select project to rename: " 'all nil t (perject-current)
 			   "There currently is no project to rename"
 			   "No project specified")
 			(perject--get-collection-name
-			 "Select collection to rename: " 'active nil t (car (perject--current))
+			 "Select collection to rename: " 'active nil t (car (perject-current))
 			 "There currently is no collection to rename"
 			 "No collection specified"))))
 	 (list
@@ -813,7 +813,7 @@ This function runs the hook `perject-rename-hook'."
 				 (if current-prefix-arg
 					 (perject--get-collection-name
 					  "Select a collection to move the project to: " 'active nil t
-					  (car (perject--current)) nil "No collection specified")
+					  (car (perject-current)) nil "No collection specified")
 				   (car proj))))
 			(cons col (perject--get-new-project-name
 					   col (format "New name of project '%s' in collection '%s': " (cdr proj) col))))
@@ -827,8 +827,8 @@ This function runs the hook `perject-rename-hook'."
 (defun perject-rename-collection (old-name new-name)
   "Rename the collection named OLD-NAME to NEW-NAME."
   (dolist (frame (frame-list))
-	(when (perject--is-assoc-with frame old-name)
-	  (perject--set-current (cons new-name (cdr (perject--current frame))) frame)))
+	(when (perject-is-assoc-with frame old-name)
+	  (perject-set-current (cons new-name (cdr (perject-current frame))) frame)))
   (setcar (assoc old-name perject-collections) new-name)
   (dolist (buffer (buffer-list))
 	(with-current-buffer buffer
@@ -838,9 +838,9 @@ This function runs the hook `perject-rename-hook'."
 						  (cons new-name (cdr proj))
 						proj))
 					perject-buffer))))
-  (when (file-exists-p (perject--get-collection-dir old-name))
-	(rename-file (perject--get-collection-dir old-name)
-				 (perject--get-collection-dir new-name))))
+  (when (file-exists-p (perject-get-collection-dir old-name))
+	(rename-file (perject-get-collection-dir old-name)
+				 (perject-get-collection-dir new-name))))
 
 (defun perject-rename-project (proj new-proj)
   "Rename the project PROJ to NEW-PROJ.
@@ -854,13 +854,13 @@ the same collection."
 		 (new-proj (cons new-col new-name))
 		 (old-col-list (assoc old-col perject-collections)))
 	(dolist (frame (frame-list))
-	  (when (perject--is-assoc-with frame proj)
-		(perject--set-current new-proj frame)))
+	  (when (perject-is-assoc-with frame proj)
+		(perject-set-current new-proj frame)))
 	(if (string-equal old-col new-col)
 		(setcdr old-col-list (cl-substitute new-name old-name (cdr old-col-list) :test #'equal))
 	  (setcdr old-col-list (delete old-name (cdr old-col-list)))
 	  (push new-name (alist-get new-col perject-collections nil nil #'string-equal)))
-	(dolist (buffer (perject--get-buffers proj))
+	(dolist (buffer (perject-get-buffers proj))
 	  (with-current-buffer buffer
 		(setq perject-buffer (cl-substitute new-proj proj perject-buffer :test #'equal))))))
 
@@ -881,7 +881,7 @@ This function runs the hooks `perject-before-delete-collection-hook' and
   (interactive
    (list
     (perject--get-collection-name
-     "Delete collection: " 'active nil t (car (perject--current))
+     "Delete collection: " 'active nil t (car (perject-current))
      "There currently is no collection to delete"
 	 "No collection specified")
     (or (and (member 'delete perject-kill-buffers-by-default) (not current-prefix-arg))
@@ -890,11 +890,11 @@ This function runs the hooks `perject-before-delete-collection-hook' and
             (y-or-n-p (format "Deleting collection '%s'. Are you sure?" name)))
 	(run-hook-with-args 'perject-before-delete-collection-hook name)
     ;; If the collection is active, close it.
-    (when (perject--collection-p name 'active)
+    (when (perject-collection-p name 'active)
       (let (perject-save-on-close perject-confirmation)
         (perject-close-collection name perject-kill-frames-on-close kill-buffers)))
-    (when (file-exists-p (perject--get-collection-dir name))
-      (delete-directory (perject--get-collection-dir name) t))
+    (when (file-exists-p (perject-get-collection-dir name))
+      (delete-directory (perject-get-collection-dir name) t))
 	(run-hook-with-args 'perject-after-delete-collection-hook name)))
 
 (defun perject-delete-project (proj &optional kill-frames kill-buffers)
@@ -917,7 +917,7 @@ This function runs the hooks `perject-before-delete-project-hook' and
   (interactive
    (list
     (perject--get-project-name
-     "Delete project: " 'all nil t (perject--current)
+     "Delete project: " 'all nil t (perject-current)
      "There currently is no project to delete"
 	 "No project specified")
 	perject-kill-frames-on-project-delete
@@ -926,8 +926,8 @@ This function runs the hooks `perject-before-delete-project-hook' and
   (when (or (not (member 'delete-project perject-confirmation))
             (y-or-n-p (format "Deleting project '%s'. Are you sure?"
 							  (perject-project-to-string proj))))
-	(let ((buffers (perject--get-buffers proj))
-		  (frames (perject--get-frames proj))
+	(let ((buffers (perject-get-buffers proj))
+		  (frames (perject-get-frames proj))
 		  buffers-to-kill)
 	  (run-hook-with-args 'perject-before-delete-project-hook proj frames buffers)
 	  ;; Remove the project from the list of active collections.
@@ -949,7 +949,7 @@ This function runs the hooks `perject-before-delete-project-hook' and
 		(dolist (frame frames)
 		  (if delete-frames
 			  (delete-frame frame)
-			(perject--set-current (and (eq kill-frames 'keep) (car proj)) frame)))
+			(perject-set-current (and (eq kill-frames 'keep) (car proj)) frame)))
 		(when delete-frames (setq frames nil)))
 	  (when (and kill-buffers
 				 buffers-to-kill
@@ -996,9 +996,9 @@ In interactive use, the user is asked for the collection name."
 	(perject--get-collection-name "Open collection: "
 								  'inactive nil nil nil nil
 								  "No collection specified")))
-  (when (perject--collection-p name 'active)
+  (when (perject-collection-p name 'active)
 	(user-error "The collection '%s' is already open" name))
-  (if (perject--collection-p name)
+  (if (perject-collection-p name)
 	  (progn
 		(dolist (hook perject-auto-add-hooks)
 		  (remove-hook hook #'perject--auto-add-buffer))
@@ -1061,7 +1061,7 @@ This function runs the hooks `perject-before-close-hook' and
   (interactive
    (list
     (perject--get-collection-name
-     "Close collection: " 'active nil t (car (perject--current))
+     "Close collection: " 'active nil t (car (perject-current))
      "There currently is no collection to close"
 	 "No collection specified")
 	perject-kill-frames-on-close
@@ -1069,8 +1069,8 @@ This function runs the hooks `perject-before-close-hook' and
 		(and (not (member 'close perject-kill-buffers-by-default)) current-prefix-arg))))
   (when (or (not (member 'close perject-confirmation))
             (y-or-n-p (format "Closing collection '%s'. Are you sure?" name)))
-	(let ((buffers (perject--get-buffers name))
-		  (frames (perject--get-frames name))
+	(let ((buffers (perject-get-buffers name))
+		  (frames (perject-get-frames name))
 		  buffers-to-kill)
       (run-hook-with-args 'perject-before-close-hook name frames buffers)
       (if (or (eq perject-save-on-close t)
@@ -1080,7 +1080,7 @@ This function runs the hooks `perject-before-close-hook' and
 				   (funcall perject-save-on-close name) buffers))
 		  (perject-save-collection name t t)
 		;; If we don't save, we need to manually remove the lock file.
-		(desktop-release-lock (file-name-as-directory (perject--get-collection-dir name))))
+		(desktop-release-lock (file-name-as-directory (perject-get-collection-dir name))))
 	  ;; Remove the collection from the list of active collections.
 	  (setq perject-collections (assoc-delete-all name perject-collections))
 	  ;; Remove all buffers from the collection.
@@ -1100,7 +1100,7 @@ This function runs the hooks `perject-before-close-hook' and
 		(dolist (frame frames)
 		  (if delete-frames
 			  (delete-frame frame)
-			(perject--set-current nil frame)))
+			(perject-set-current nil frame)))
 		(when delete-frames (setq frames nil)))
 	  (when (and kill-buffers
 				 buffers-to-kill
@@ -1134,7 +1134,7 @@ This function runs the hooks `perject-before-reload-hook' and
 `perject-after-reload-hook'."
   (interactive
    (list
-	(perject--get-collection-name "Reload collection: " 'active nil t (car (perject--current))
+	(perject--get-collection-name "Reload collection: " 'active nil t (car (perject-current))
 								  "There is no active collection to reload"
 								  "No collection specified")
 	perject-kill-frames-on-reload
@@ -1143,8 +1143,8 @@ This function runs the hooks `perject-before-reload-hook' and
   (when (or (not (member 'reload perject-confirmation))
 			(y-or-n-p (format "Reload collection '%s'?" name)))
 	;; Allow reusing frames that belong to the collection.
-	(let* ((frames (perject--get-frames name))
-		   (buffers (perject--get-buffers name))
+	(let* ((frames (perject-get-frames name))
+		   (buffers (perject-get-buffers name))
 		   (perject--desktop-reuse-frames
 			(apply-partially (-flip #'member) frames))
 		   (perject-confirmation-kill-buffers
@@ -1165,7 +1165,7 @@ This function runs the hooks `perject-before-reload-hook' and
 		  (dolist (frame unused-frames)
 			(if delete-frames
 				(delete-frame frame)
-			  (perject--set-current nil frame)))))
+			  (perject-set-current nil frame)))))
 	  (setq frames (cl-remove-if-not #'frame-live-p frames))
 	  (run-hook-with-args 'perject-after-reload-hook name frames buffers))))
 
@@ -1180,10 +1180,10 @@ the optional argument NO-MSG is non-nil, don't print any messages."
   (interactive
    (list
     (if (or current-prefix-arg
-            (not (perject--current)))
-        (perject--get-project "Save collection: " 'active nil t (car (perject--current))
+            (not (perject-current)))
+        (perject--get-project "Save collection: " 'active nil t (car (perject-current))
 								   "No collection to save" "No collection specified")
-      (car (perject--current)))))
+      (car (perject-current)))))
   (perject-desktop-save name release-lock no-msg))
 
 (defun perject-save-collections (names &optional release-lock no-msg)
@@ -1204,22 +1204,22 @@ messages are printed."
 	  ('nil 'all)
 	  ('(4) 'exit)
 	  (_ (completing-read-multiple
-		  "Save Collections: " (perject--list-collections 'active) nil t)))))
+		  "Save Collections: " (perject-get-collections 'active) nil t)))))
   (let ((collections
 		 (pcase names
 		   ((pred listp) names)
-		   ('all (perject--list-collections 'active))
+		   ('all (perject-get-collections 'active))
 		   ('exit (pcase perject-save-on-exit
-					('all (perject--list-collections 'active))
+					('all (perject-get-collections 'active))
 					((pred listp) (if (eq (car perject-save-on-exit) 'not)
-									  (cl-set-difference (perject--list-collections 'active)
+									  (cl-set-difference (perject-get-collections 'active)
 														 (cdr perject-save-on-exit)
 														 :test #'string-equal)
 									perject-save-on-exit))
 					('recent perject--previous-collections)
 					((pred functionp) (funcall perject-save-on-exit
 											   perject--previous-collections
-											   (perject--list-collections 'active))))))))
+											   (perject-get-collections 'active))))))))
     (dolist (name collections)
 	  (perject-desktop-save name release-lock (not (eq (length collections) 1))))
 	(when (and collections (not no-msg))
@@ -1255,37 +1255,37 @@ and `perject-after-create-hook'."
 	  (perject--get-collection-name
 	   "Switch to collection (or create new one): " 'active
 	   ;; If we already have a collection focused, do not include it in the list.
-	   (unless (cdr (perject--current))
-		 (-compose #'not (apply-partially #'perject--is-assoc-with (selected-frame))))
+	   (unless (cdr (perject-current))
+		 (-compose #'not (apply-partially #'perject-is-assoc-with (selected-frame))))
 	   nil nil nil #'ignore))
-	 ((and (not current-prefix-arg) (perject--current))
+	 ((and (not current-prefix-arg) (perject-current))
 	  (let ((proj
 			 (perject--get-project-name
 			  "Switch to project (or create new one): " 'current
-			  (-compose #'not (apply-partially #'perject--is-assoc-with (selected-frame)))
+			  (-compose #'not (apply-partially #'perject-is-assoc-with (selected-frame)))
 			  nil nil nil #'ignore)))
 		(pcase proj
-		  ('nil (car (perject--current)))
-		  ((pred stringp) (cons (car (perject--current)) proj))
+		  ('nil (car (perject-current)))
+		  ((pred stringp) (cons (car (perject-current)) proj))
 		  (_ proj))))
 	 (t
 	  (perject--get-project-name
 	   "Switch to project: " 'all
-	   (-compose #'not (apply-partially #'perject--is-assoc-with (selected-frame)))
+	   (-compose #'not (apply-partially #'perject-is-assoc-with (selected-frame)))
 	   t nil "No project to switch to" "No project specified")))
 	(selected-frame)
 	(memq 'switch perject-messages)))
 
   (let ((proj (if (and (consp proj) (not (cdr proj))) (car proj) proj))
 		(frame (or frame (selected-frame)))
-		(old-proj (if (cdr (perject--current frame)) (perject--current frame)
-					(car (perject--current frame)))))
+		(old-proj (if (cdr (perject-current frame)) (perject-current frame)
+					(car (perject-current frame)))))
 	(run-hook-with-args 'perject-before-switch-hook old-proj proj frame)
 	;; Create the project or collection if not already existent.
-	(when (or (and (stringp proj) (not (perject--collection-p proj)))
-			  (and (consp proj) (not (perject--project-p proj))))
+	(when (or (and (stringp proj) (not (perject-collection-p proj)))
+			  (and (consp proj) (not (perject-project-p proj))))
 		(perject-create proj))
-	(perject--set-current proj frame)
+	(perject-set-current proj frame)
 	(when msg
 	  (let ((is-current (equal frame (selected-frame))))
 		(cl-flet ((fun (proj)
@@ -1315,8 +1315,8 @@ In interactive use, this is determined by `perject-messages'.
 This function runs the hooks `perject-before-switch-hook' and
 `perject-after-switch-hook'."
   (interactive (list (member 'next-collection perject-messages)))
-  (let ((collections (perject--list-collections 'active))
-		(current (car (perject--current))))
+  (let ((collections (perject-get-collections 'active))
+		(current (car (perject-current))))
 	(unless collections
 	  (user-error "There currently are no collections"))
 	(let ((index (or (and current (cl-position current collections :test #'string-equal)) 0)))
@@ -1331,8 +1331,8 @@ In interactive use, this is determined by `perject-messages'.
 This function runs the hooks `perject-before-switch-hook' and
 `perject-after-switch-hook'."
   (interactive (list (member 'previous-collection perject-messages)))
-  (let ((collections (perject--list-collections 'active))
-		(current (car (perject--current))))
+  (let ((collections (perject-get-collections 'active))
+		(current (car (perject-current))))
 	(unless collections
 	  (user-error "There currently are no collections"))
 	(let ((index (or (and current (cl-position current collections :test #'string-equal)) 0)))
@@ -1348,11 +1348,11 @@ This function runs the hooks `perject-before-switch-hook' and
 `perject-after-switch-hook'."
   (interactive (list (member 'next-project perject-messages)))
   (let ((projects (alist-get (perject-assert-collection) perject-collections nil nil #'string-equal))
-		(current (cdr (perject--current))))
+		(current (cdr (perject-current))))
 	(unless projects
 	  (user-error "The current collection has no associated projects"))
 	(let* ((index (or (and current (cl-position current projects :test #'string-equal)) 0))
-		   (proj (cons (car (perject--current)) (nth (mod (1+ index) (length projects)) projects))))
+		   (proj (cons (car (perject-current)) (nth (mod (1+ index) (length projects)) projects))))
 	  (perject-switch proj nil msg))))
 
 (defun perject-previous-project (&optional msg)
@@ -1365,11 +1365,11 @@ This function runs the hooks `perject-before-switch-hook' and
 `perject-after-switch-hook'."
   (interactive (list (member 'previous-project perject-messages)))
   (let ((projects (alist-get (perject-assert-collection) perject-collections nil nil #'string-equal))
-		(current (cdr (perject--current))))
+		(current (cdr (perject-current))))
 	(unless projects
 	  (user-error "The current collection has no associated projects"))
 	(let* ((index (or (and current (cl-position current projects :test #'string-equal)) 0))
-		   (proj (cons (car (perject--current)) (nth (mod (1- index) (length projects)) projects))))
+		   (proj (cons (car (perject-current)) (nth (mod (1- index) (length projects)) projects))))
 	  (perject-switch proj nil msg))))
 
 
@@ -1382,7 +1382,7 @@ loaded and to influence the order used for `perject-next-collection' and
 `perject-previous-collection'."
   [:description
    (lambda ()
-	 (let ((col (perject--list-collections 'active)))
+	 (let ((col (perject-get-collections 'active)))
 	   (unless (> (length col) 0)
 		 (user-error "There currently are no collections to sort"))
 	   (setq perject--sort-collections-index (min perject--sort-collections-index (1- (length col))))
@@ -1458,13 +1458,13 @@ This is for example useful to influence the order used for
   [:description
    (lambda ()
 	 (perject-assert-collection)
-	 (let ((projects (mapcar #'cdr (perject--list-projects (car (perject--current))))))
+	 (let ((projects (mapcar #'cdr (perject-get-projects (car (perject-current))))))
 	   (unless (> (length projects) 0)
 		 (user-error "The current collection has no projects to sort"))
 	   (setq perject--sort-projects-index (min perject--sort-projects-index (1- (length projects))))
 	   (let ((current (nth perject--sort-projects-index projects)))
 		 (format "Sort projects of collection '%s': %s"
-				 (car (perject--current))
+				 (car (perject-current))
 				 (string-join (mapcar (lambda (p)
 										(propertize p 'face
 													(if (equal p current)
@@ -1483,8 +1483,8 @@ The project is determined by `perject--sort-projects-index'."
   (interactive)
   (unless (eq transient-current-command 'perject-sort-projects)
     (user-error "This function can only be called within `perject-sort-projects'"))
-  (let ((projects (alist-get (car (perject--current)) perject-collections nil nil #'string-equal)))
-	(setcdr (assoc (car (perject--current)) perject-collections)
+  (let ((projects (alist-get (car (perject-current)) perject-collections nil nil #'string-equal)))
+	(setcdr (assoc (car (perject-current)) perject-collections)
 			(if (eq perject--sort-projects-index (1- (length projects)))
 				;; The current entry is the last one.
 				;; In the other case we interchange the two entries (apply a
@@ -1505,12 +1505,12 @@ The collection is determined by `perject--sort-projects-index'."
   (interactive)
   (unless (eq transient-current-command 'perject-sort-projects)
     (user-error "This function can only be called within `perject-sort-projects'"))
-  (let ((length (length (alist-get (car (perject--current)) perject-collections nil nil #'string-equal))))
+  (let ((length (length (alist-get (car (perject-current)) perject-collections nil nil #'string-equal))))
 	;; See `perject--sort-collections-shift-left' for an explanation of the case
 	;; distinction.
 	(if (eq perject--sort-projects-index 0)
-		(let ((projects (alist-get (car (perject--current)) perject-collections nil nil #'string-equal)))
-		  (setcdr (assoc (car (perject--current)) perject-collections)
+		(let ((projects (alist-get (car (perject-current)) perject-collections nil nil #'string-equal)))
+		  (setcdr (assoc (car (perject-current)) perject-collections)
 				  (append (cdr projects) (list (car projects)))))
 	  (let ((perject--sort-projects-index (mod (1- perject--sort-projects-index) length)))
 		(perject--sort-projects-shift-right)))
@@ -1523,7 +1523,7 @@ The collection is determined by `perject--sort-projects-index'."
     (user-error "This function can only be called within `perject-sort-projects'"))
   (setq perject--sort-projects-index
 		(mod (1+ perject--sort-projects-index)
-			 (length (alist-get (car (perject--current)) perject-collections nil nil #'string-equal)))))
+			 (length (alist-get (car (perject-current)) perject-collections nil nil #'string-equal)))))
 
 (defun perject--sort-projects-previous ()
   "Select the previous collection as determined by `perject--sort-projects-index'."
@@ -1532,7 +1532,7 @@ The collection is determined by `perject--sort-projects-index'."
     (user-error "This function can only be called within `perject-sort-projects'"))
   (setq perject--sort-projects-index
 		(mod (1- perject--sort-projects-index)
-			 (length (alist-get (car (perject--current)) perject-collections nil nil #'string-equal)))))
+			 (length (alist-get (car (perject-current)) perject-collections nil nil #'string-equal)))))
 
 
 ;;;; Managing Buffers
@@ -1555,26 +1555,26 @@ that."
   (interactive
    (list
 	(current-buffer)
-	(if (and (not current-prefix-arg) (cdr (perject--current)))
-		(perject--current)
+	(if (and (not current-prefix-arg) (cdr (perject-current)))
+		(perject-current)
 	  ;; Let the user select from the projects of the current collection only if
 	  ;; not all of them are already associated with the buffer.
 	  (if-let (((or (not current-prefix-arg) (equal current-prefix-arg '(4))))
-			   (col (car (perject--current)))
+			   (col (car (perject-current)))
 			   (projects (cl-remove-if
-						  (apply-partially #'perject--is-assoc-with (current-buffer))
-						  (perject--list-projects col))))
+						  (apply-partially #'perject-is-assoc-with (current-buffer))
+						  (perject-get-projects col))))
 		  (perject--get-project-name
 		   "Add buffer to project: " projects nil t nil nil
 		   "No project specified")
 		(perject--get-project-name
 		 "Add buffer to project: " 'all
-		 (-compose 'not (apply-partially #'perject--is-assoc-with (current-buffer)))
+		 (-compose 'not (apply-partially #'perject-is-assoc-with (current-buffer)))
 		 t nil
 		 "All projects are already associated with the current buffer"
 		 "No project specified")))
     (member 'add-buffer perject-messages)))
-  (when (perject--is-assoc-with buffer proj)
+  (when (perject-is-assoc-with buffer proj)
 	(user-error "Buffer '%s' is already associated with project '%s'."
                 (buffer-name buffer) (perject-project-to-string proj)))
   (with-current-buffer buffer
@@ -1582,22 +1582,6 @@ that."
   (when msg
     (message "Added buffer '%s' to project '%s'."
 			 (buffer-name buffer) (perject-project-to-string proj))))
-
-
-(defun perject--auto-add-buffer (&optional ignore)
-  "Silently add the current buffer to projects honoring `perject-auto-add-function'.
-If IGNORE is non-nil, simply add the current buffer to the current project;
-i.e. act as if `perject-auto-add-function' was nil.
-Does nothing to projects that are already associated with the buffer."
-  (let ((buffer (current-buffer)))
-	(if (or ignore (not perject-auto-add-function))
-		(let ((project (perject--current)))
-		  (when (and (cdr project) (not (perject--is-assoc-with buffer project)))
-			(perject-add-buffer-to-project buffer project)))
-	  (dolist (project (funcall perject-auto-add-function buffer (perject--current)))
-		(when (and (perject--project-p project)
-				   (not (perject--is-assoc-with buffer project)))
-		  (perject-add-buffer-to-project buffer project))))))
 
 
 (defun perject-remove-buffer-from-project (buffer proj &optional msg)
@@ -1619,26 +1603,26 @@ buffer of a project is removed."
   (interactive
    (list
 	(current-buffer)
-	(if (and (not current-prefix-arg) (cdr (perject--current)))
-		(perject--current)
+	(if (and (not current-prefix-arg) (cdr (perject-current)))
+		(perject-current)
 	  ;; Let the user select from the projects of the current collection only if
 	  ;; not all of them are already associated with the buffer.
 	  (if-let (((or (not current-prefix-arg) (equal current-prefix-arg '(4))))
-			   (col (car (perject--current)))
+			   (col (car (perject-current)))
 			   (projects (cl-remove-if-not
-						  (apply-partially #'perject--is-assoc-with (current-buffer))
-						  (perject--list-projects col))))
+						  (apply-partially #'perject-is-assoc-with (current-buffer))
+						  (perject-get-projects col))))
 		  (perject--get-project-name
 		   "Remove buffer from project: " projects nil t nil nil
 		   "No project specified")
 		(perject--get-project-name
 		 "Remove buffer from project: " 'all
-		 (apply-partially #'perject--is-assoc-with (current-buffer))
+		 (apply-partially #'perject-is-assoc-with (current-buffer))
 		 t nil
 		 "The buffer is currently not associated with any project"
 		 "No project specified")))
 	(member 'remove-buffer perject-messages)))
-  (unless (perject--is-assoc-with buffer proj)
+  (unless (perject-is-assoc-with buffer proj)
 	(user-error "Buffer '%s' is not associated with project '%s'."
                 (buffer-name buffer) (perject-project-to-string proj)))
   (with-current-buffer buffer
@@ -1647,7 +1631,7 @@ buffer of a project is removed."
     (message "Removed buffer '%s' from project '%s'."
 			 (buffer-name buffer) (perject-project-to-string proj)))
   (when (and
-		 (null (perject--get-buffers proj))
+		 (null (perject-get-buffers proj))
 		 (or (eq perject-empty-project-delete t)
 			 (and (eq perject-empty-project-delete 'ask)
                   (y-or-n-p
@@ -1658,8 +1642,6 @@ buffer of a project is removed."
 				  (funcall perject-empty-project-delete proj))))
     (let (perject-confirmation)
       (perject-delete-collection name))))
-
-;;;; Public Interface
 
 (defun perject-print-buffer-projects (&optional buffer)
   "Print the names of the projects with which the buffer BUFFER is associated.
@@ -1678,25 +1660,17 @@ interactive use."
 				buffer-name
 				(string-join (mapcar #'perject-project-to-string projects) ", "))))))
 
-(defun perject-project-to-string (proj)
-  "Return a string representing the project PROJ.
-PROJ is a dotted pair with car a collection and cdr a project name.
-Which string is returned is determined by `perject-project-format'."
-  (if (stringp perject-project-format)
-	  (format perject-project-format (car proj) (cdr proj))
-	(funcall perject-project-format (car proj) (cdr proj))))
 
+;;;; Public Interface
 
-;;;; Internal Interface
-
-(defun perject--current (&optional frame)
+(defun perject-current (&optional frame)
   "Return the collection and project currently associated with the frame FRAME.
 If FRAME is nil, use the current frame.
 The returned value is a dotted pair with car the collection and cdr the project
 name."
   (frame-parameter frame 'perject-project))
 
-(defun perject--set-current (proj &optional frame)
+(defun perject-set-current (proj &optional frame)
   "Set the collection and project of the frame FRAME to PROJ.
 PROJ may be a dotted pair with car the collection and cdr the project name.
 It may alternatively be a collection name or nil. In the latter case, the frame
@@ -1707,7 +1681,64 @@ If FRAME is nil, it defaults to the selected frame."
 	(when perject-frame-title-format
 	  (set-frame-parameter frame 'name (and proj (funcall perject-frame-title-format proj))))))
 
-(defun perject--is-assoc-with (obj proj)
+(defun perject-get-collection-dir (name)
+  "Return the directory belonging to a (possibly non-existent) collection with name NAME."
+  (expand-file-name (concat (file-name-as-directory perject-directory) name)))
+
+(defun perject-get-collections (&optional scope)
+  "Return a list containing the names of all collections.
+Each collection is represented as a directory in `perject-directory'. If SCOPE
+is 'active, only return the active collections; i.e. those which are currently
+loaded. If SCOPE is 'inactive, return all collections that are not active at the
+moment."
+  (if (eq scope 'active)
+	  (mapcar 'car perject-collections)
+	(let ((col
+		   (and
+			(file-exists-p perject-directory)
+			(remove ".."
+					(remove "."
+							(mapcar 'car
+									(cl-remove-if-not
+									 (lambda (elem)
+									   (eq (cadr elem) t))
+									 (directory-files-and-attributes perject-directory))))))))
+	  (if (eq scope 'inactive)
+		  (cl-set-difference col (perject-get-collections 'active) :test #'string-equal)
+		col))))
+
+(defun perject-get-projects (&optional collection)
+  "Return a list containing the names of all projects belonging to COLLECTION.
+More precisely, the list contains dotted pairs with car the respective
+collection name and cdr the project name.
+COLLECTION is a string denoting a collection. If COLLECTION is nil, use the
+current collection if there is one. If there is no current collection or
+COLLECTION is 'all, return the projects of all active collections."
+  (cl-flet ((fun (list) (mapcar (apply-partially #'cons (car list)) (cdr list))))
+	(let ((collection (or collection (car (perject-current)))))
+	  (if (stringp collection)
+		  (fun (assoc collection perject-collections))
+		(seq-mapcat #'fun perject-collections)))))
+
+(defun perject-collection-p (name &optional scope)
+  "Return a non-nil value if there exists a collection called NAME.
+The optional argument SCOPE behaves like for `perject-get-collections'."
+  (member name (perject-get-collections scope)))
+
+(defun perject-project-p (proj)
+  "Return a non-nil value if the project PROJ exists.
+PROJ is a cons cell with car a collection name and cdr a project name."
+  (member (cdr proj) (alist-get (car proj) perject-collections nil nil #'string-equal)))
+
+(defun perject-project-to-string (proj)
+  "Return a string representing the project PROJ.
+PROJ is a dotted pair with car a collection and cdr a project name.
+Which string is returned is determined by `perject-project-format'."
+  (if (stringp perject-project-format)
+	  (format perject-project-format (car proj) (cdr proj))
+	(funcall perject-project-format (car proj) (cdr proj))))
+
+(defun perject-is-assoc-with (obj proj)
   "Return a non-nil value if object OBJ is associated with PROJ.
 Otherwise, nil is returned. PROJ may either be a dotted pair with car a
 collection and cdr a project name or a collection name. If it is a dotted pair
@@ -1719,17 +1750,24 @@ or a frame."
 		((pred bufferp)
 		 (cl-some (-compose (apply-partially #'string-equal (car proj)) #'car)
 				  (buffer-local-value 'perject-buffer obj)))
-		((pred framep) (string-equal (car proj) (car (perject--current obj)))))
+		((pred framep) (string-equal (car proj) (car (perject-current obj)))))
 	(pcase-exhaustive obj
 	  ((pred bufferp) (member proj (buffer-local-value 'perject-buffer obj)))
-	  ((pred framep) (equal proj (perject--current obj)))))))
+	  ((pred framep) (equal proj (perject-current obj)))))))
 
-(defun perject--is-anonymous-buffer (buffer)
+(defun perject-anonymous-buffer-p (buffer)
   "Return non-nil if the buffer BUFFER is anonymous.
 This means that it is not associated with any project."
   (null (buffer-local-value 'perject-buffer buffer)))
 
-(defun perject--get-buffers (proj)
+(defun perject-get-frames (proj)
+  "Return the currently open frames which belong to PROJ.
+PROJ may either be a dotted pair with car a collection and cdr a project name or
+a collection name."
+  (cl-remove-if-not (lambda (frame) (perject-is-assoc-with frame proj))
+					(frame-list)))
+
+(defun perject-get-buffers (proj)
   "Return the list of buffers associated with PROJ.
 PROJ may be a dotted pair with car a collection and cdr a project name. It may
 alternatively be a collection name."
@@ -1742,45 +1780,27 @@ alternatively be a collection name."
 	(apply-partially #'buffer-local-value 'perject-buffer))
    (buffer-list)))
 
-(defun perject--get-anonymous-buffers ()
+(defun perject-get-anonymous-buffers ()
   "Return the list of all buffers not associated with any project."
   (cl-remove-if (apply-partially #'buffer-local-value 'perject-buffer) (buffer-list)))
-
-(defun perject--collection-p (name &optional scope)
-  "Return a non-nil value if there exists a collection called NAME.
-The optional argument SCOPE behaves like for `perject--list-collections'."
-  (member name (perject--list-collections scope)))
-
-(defun perject--project-p (proj)
-  "Return a non-nil value if the project PROJ exists.
-PROJ is a cons cell with car a collection name and cdr a project name."
-  (member (cdr proj) (alist-get (car proj) perject-collections nil nil #'string-equal)))
 
 (defun perject-assert-collection (&optional frame)
   "Ensure that frame FRAME has a current collection and return it (a string).
 If not, throw an error. If nil, FRAME defaults to the selected frame."
-  (or (car (perject--current frame))
+  (or (car (perject-current frame))
 	  (user-error "The %sframe is not associated with any collection"
 				  (if frame "" "current "))))
 
 (defun perject-assert-project (&optional frame)
   "Ensure that frame FRAME has a current project and return it (a dotted pair).
 If not, throw an error. If nil, FRAME defaults to the selected frame."
-  (let ((current (perject--current frame)))
+  (let ((current (perject-current frame)))
 	(or (and (cdr current) current)
 		(user-error "The %sframe is not associated with any project"
 					(if frame "" "current ")))))
 
-(defun perject--get-collection-dir (name)
-  "Return the directory belonging to a (possibly non-existent) collection with name NAME."
-  (expand-file-name (concat (file-name-as-directory perject-directory) name)))
 
-(defun perject--get-frames (proj)
-  "Return the currently open frames which belong to PROJ.
-PROJ may either be a dotted pair with car a collection and cdr a project name or
-a collection name."
-  (cl-remove-if-not (lambda (frame) (perject--is-assoc-with frame proj))
-					(frame-list)))
+;;;; User Input Interface
 
 (defun perject--get-collection-name
 	(prompt type &optional predicate require-match def no-candidate empty-string)
@@ -1805,9 +1825,9 @@ EMPTY-STRING only takes effect when DEF is nil, because otherwise the empty
 string is interpreted to refer to the default value."
   (let* ((candidates
 		  (pcase type
-			('all (perject--list-collections))
-			('inactive (perject--list-collections 'inactive))
-			('active (perject--list-collections 'active))
+			('all (perject-get-collections))
+			('inactive (perject-get-collections 'inactive))
+			('active (perject-get-collections 'active))
 			(_ type)))
 		 (collection
 		  (or
@@ -1824,22 +1844,22 @@ string is interpreted to refer to the default value."
 				(propertize " " 'display '(space :align-to (- center 60)))
 				(propertize
 				 (or
-				  (and (perject--collection-p str 'active)
-					   (or (string-join (mapcar #'cdr (perject--list-projects str)) ", ")
+				  (and (perject-collection-p str 'active)
+					   (or (string-join (mapcar #'cdr (perject-get-projects str)) ", ")
 						   "no projects"))
 				  (format-time-string "%Y %b %d %a" (file-attribute-access-time
 													 (file-attributes
 													  (desktop-full-file-name
-													   (perject--get-collection-dir str)))))
+													   (perject-get-collection-dir str)))))
 				  "")
 				 'face 'perject-project-annotator-main)
-				(when (perject--collection-p str 'active)
+				(when (perject-collection-p str 'active)
 				  (concat
 				   (propertize " " 'display '(space :align-to (- center 20)))
 				   (propertize
 					(format "%4d buffer%s"
-							(length (perject--get-buffers str))
-							(if (not (eq (length (perject--get-buffers str)) 1)) "s" ""))
+							(length (perject-get-buffers str))
+							(if (not (eq (length (perject-get-buffers str)) 1)) "s" ""))
 					'face 'perject-project-annotator-buffers)
 				   (when (featurep 'perject-tab)
 					   (concat
@@ -1852,9 +1872,9 @@ string is interpreted to refer to the default value."
 				   (propertize " " 'display '(space :align-to (+ center 40)))
 				   (propertize
 					(format "%4d frame%s%s"
-							(length (perject--get-frames str))
-							(if (not (eq (length (perject--get-frames str)) 1)) "s" "")
-							(if (string-equal (car (perject--current)) str) " [current]" ""))
+							(length (perject-get-frames str))
+							(if (not (eq (length (perject-get-frames str)) 1)) "s" "")
+							(if (string-equal (car (perject-current)) str) " [current]" ""))
 					'face 'perject-project-annotator-frames)))))))
 		 (name
 		   (completing-read
@@ -1877,9 +1897,9 @@ TYPE. It may have one of the following values:
 - 'all: all projects from all active collections."
   (let* ((candidates
 		  (pcase type
-			('all (perject--list-projects 'all))
-			('current (perject--list-projects))
-			((pred stringp) (perject--list-projects type))
+			('all (perject-get-projects 'all))
+			('current (perject-get-projects))
+			((pred stringp) (perject-get-projects type))
 			(_ type)))
 		 (collection
 		  (or
@@ -1896,13 +1916,13 @@ TYPE. It may have one of the following values:
 			,(lambda (str)
 			   (let ((proj (alist-get str alist nil nil #'string-equal)))
 				 (concat
-				  (when (perject--project-p proj)
+				  (when (perject-project-p proj)
 					(concat
 					 (propertize " " 'display '(space :align-to (- center 30)))
 					 (propertize
 					  (format "%4d buffer%s"
-							  (length (perject--get-buffers proj))
-							  (if (not (eq (length (perject--get-buffers proj)) 1)) "s" ""))
+							  (length (perject-get-buffers proj))
+							  (if (not (eq (length (perject-get-buffers proj)) 1)) "s" ""))
 					  'face 'perject-project-annotator-buffers)
 					 (when (featurep 'perject-tab)
 					   (concat
@@ -1915,9 +1935,9 @@ TYPE. It may have one of the following values:
 					 (propertize " " 'display '(space :align-to (+ center 30)))
 					 (propertize
 					  (format "%4d frame%s%s"
-							  (length (perject--get-frames proj))
-							  (if (not (eq (length (perject--get-frames proj)) 1)) "s" "")
-							  (if (equal (perject--current) proj) " [current]" ""))
+							  (length (perject-get-frames proj))
+							  (if (not (eq (length (perject-get-frames proj)) 1)) "s" "")
+							  (if (equal (perject-current) proj) " [current]" ""))
 					  'face 'perject-project-annotator-frames))))))))
 		 (name
 		  (completing-read
@@ -1950,7 +1970,7 @@ specified name, an error is thrown."
 	 name)
 	(when (string-empty-p name)
       (user-error "The collection name cannot be empty."))
-    (when (member name (perject--list-collections))
+    (when (member name (perject-get-collections))
       (user-error "There already is a collection named '%s'." name))
     name))
 
@@ -1977,44 +1997,27 @@ collection with the the specified name, an error is thrown."
 	 name)
 	(when (string-empty-p name)
       (user-error "The project name cannot be empty."))
-    (when (member name (mapcar #'cdr (perject--list-projects collection)))
+    (when (member name (mapcar #'cdr (perject-get-projects collection)))
       (user-error "There already is a project named '%s' within this collection." name))
     name))
 
-(defun perject--list-collections (&optional scope)
-  "Return a list containing the names of all collections.
-Each collection is represented as a directory in `perject-directory'. If SCOPE
-is 'active, only return the active collections; i.e. those which are currently
-loaded. If SCOPE is 'inactive, return all collections that are not active at the
-moment."
-  (if (eq scope 'active)
-	  (mapcar 'car perject-collections)
-	(let ((col
-		   (and
-			(file-exists-p perject-directory)
-			(remove ".."
-					(remove "."
-							(mapcar 'car
-									(cl-remove-if-not
-									 (lambda (elem)
-									   (eq (cadr elem) t))
-									 (directory-files-and-attributes perject-directory))))))))
-	  (if (eq scope 'inactive)
-		  (cl-set-difference col (perject--list-collections 'active) :test #'string-equal)
-		col))))
 
-(defun perject--list-projects (&optional collection)
-  "Return a list containing the names of all projects belonging to COLLECTION.
-More precisely, the list contains dotted pairs with car the respective
-collection name and cdr the project name.
-COLLECTION is a string denoting a collection. If COLLECTION is nil, use the
-current collection if there is one. If there is no current collection or
-COLLECTION is 'all, return the projects of all active collections."
-  (cl-flet ((fun (list) (mapcar (apply-partially #'cons (car list)) (cdr list))))
-	(let ((collection (or collection (car (perject--current)))))
-	  (if (stringp collection)
-		  (fun (assoc collection perject-collections))
-		(seq-mapcat #'fun perject-collections)))))
+;;;; Helper Functions
+
+(defun perject--auto-add-buffer (&optional ignore)
+  "Silently add the current buffer to projects honoring `perject-auto-add-function'.
+If IGNORE is non-nil, simply add the current buffer to the current project;
+i.e. act as if `perject-auto-add-function' was nil.
+Does nothing to projects that are already associated with the buffer."
+  (let ((buffer (current-buffer)))
+	(if (or ignore (not perject-auto-add-function))
+		(let ((project (perject-current)))
+		  (when (and (cdr project) (not (perject-is-assoc-with buffer project)))
+			(perject-add-buffer-to-project buffer project)))
+	  (dolist (project (funcall perject-auto-add-function buffer (perject-current)))
+		(when (and (perject-project-p project)
+				   (not (perject-is-assoc-with buffer project)))
+		  (perject-add-buffer-to-project buffer project))))))
 
 (defun perject--kill-buffers-y-or-n-p (proj buffers)
   "Using `y-or-n-p' ask the user whether the buffers BUFFERS belonging only to the project PROJ should be killed.
@@ -2071,7 +2074,7 @@ This function also adds NAME to the alist of active collections `perject-collect
 	;; implementation, so we need the following line since otherwise desktop
 	;; thinks that it is loading the already loaded desktop again and refuses to
 	;; do so.
-	(setq desktop-dirname (file-name-as-directory (perject--get-collection-dir name)))
+	(setq desktop-dirname (file-name-as-directory (perject-get-collection-dir name)))
 	(desktop-read desktop-dirname)
 	(push perject--desktop-current perject-collections))
   ;; Change the frame title of the newly restored frames, if desired.
@@ -2081,7 +2084,7 @@ This function also adds NAME to the alist of active collections `perject-collect
   (when perject-frame-title-format
 	(dolist (frame perject--desktop-restored-frames)
 	  (set-frame-parameter frame 'name
-						   (funcall perject-frame-title-format (perject--current frame)))))
+						   (funcall perject-frame-title-format (perject-current frame)))))
   (run-hook-with-args 'perject-desktop-after-load-hook perject--desktop-current))
 
 (defun perject-desktop-save (name &optional release-lock no-msg)
@@ -2104,28 +2107,28 @@ don't print any messages."
 		;; Frames that do not belong to the project named NAME should not be
 		;; saved, so we put them into a list and save the other frames.
 		(ignored-frames
-		 (cl-remove-if (apply-partially (-flip #'perject--is-assoc-with) name) (frame-list)))
+		 (cl-remove-if (apply-partially (-flip #'perject-is-assoc-with) name) (frame-list)))
 		;; Only save those buffers belonging to the current project and respect
 		;; the value of `perject-buffers-not-to-save-function'.
 		(desktop-buffers-not-to-save-function
 		 (if perject-buffers-not-to-save-function
 			 (lambda (file-name buffer-name major-mode minor-modes)
-			   (and (perject--is-assoc-with (get-buffer buffer-name) name)
+			   (and (perject-is-assoc-with (get-buffer buffer-name) name)
 					(funcall perject-buffers-not-to-save-function
 							 name file-name buffer-name major-mode minor-modes)))
 		   (lambda (_ buffer-name _ _)
-			 (perject--is-assoc-with (get-buffer buffer-name) name))))
+			 (perject-is-assoc-with (get-buffer buffer-name) name))))
 		;; Hack: Pretend the desktop file is from the same time, so that desktop does not
 		;; complain that the desktop file is more recent than the one loaded.
 		(desktop-file-modtime (file-attribute-modification-time
 							   (file-attributes
 								(desktop-full-file-name
-								 (file-name-as-directory (perject--get-collection-dir name)))))))
+								 (file-name-as-directory (perject-get-collection-dir name)))))))
 	(run-hook-with-args 'perject-desktop-save-hook perject--desktop-current)
 	(dolist (frame ignored-frames)
 	  (set-frame-parameter frame 'desktop-dont-save t))
 	(desktop-save (file-name-as-directory
-				   (perject--get-collection-dir name))
+				   (perject-get-collection-dir name))
 				  release-lock)
 	(dolist (frame ignored-frames)
 	  (set-frame-parameter frame 'desktop-dont-save nil))

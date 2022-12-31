@@ -53,8 +53,8 @@ belonging to any project."
 						 'active nil t nil
 						 "No collection active" #'ignore))
   (if qualifier
-	  (perject--is-assoc-with buf qualifier)
-	(perject--is-anonymous-buffer buf)))
+	  (perject-is-assoc-with buf qualifier)
+	(perject-anonymous-buffer-p buf)))
 
 ;;;###autoload (autoload 'ibuffer-filter-by-name "ibuf-ext")
 (define-ibuffer-filter project
@@ -71,8 +71,8 @@ projects."
 							  (if current-prefix-arg 'all 'current) nil t nil
 							  "No project active in the collection" #'ignore))
   (if qualifier
-	  (perject--is-assoc-with buf qualifier)
-	(perject--is-anonymous-buffer buf)))
+	  (perject-is-assoc-with buf qualifier)
+	(perject-anonymous-buffer-p buf)))
 
 
 (defun perject-ibuffer-enable-filter-by-collection (&optional name)
@@ -80,7 +80,7 @@ projects."
 This means that only the buffers that belong to a project of that collection are
 shown. If NAME is nil, it defaults to the current collection.
 This also disables all previous filters by project or collection."
-  (let ((name (or name (car (perject--current))))
+  (let ((name (or name (car (perject-current))))
 		(current-filter (alist-get 'collection ibuffer-filtering-qualifiers))
 		(current-filter-proj (alist-get 'project ibuffer-filtering-qualifiers)))
 	(setq ibuffer-filtering-qualifiers
@@ -100,7 +100,7 @@ This means that only the buffers of the project PROJ are shown.
 PROJ may be nil or a dotted pair with car a collection name and cdr a project
 name. If nil, PROJ defaults to the current project.
 This also disables all previous filters by project or collection."
-  (let ((proj (or proj (perject--current)))
+  (let ((proj (or proj (perject-current)))
 		(current-filter (alist-get 'project ibuffer-filtering-qualifiers))
 		(current-filter-col (alist-get 'collection ibuffer-filtering-qualifiers)))
 	(setq ibuffer-filtering-qualifiers
@@ -124,8 +124,8 @@ In interactive use, PROJ defaults to the current project. If the current frame
 is not associated with any project or if a prefix argument is supplied, let the
 user choose the project."
   (interactive
-   (list (if (and (not current-prefix-arg) (cdr (perject--current)))
-			 (perject--current)
+   (list (if (and (not current-prefix-arg) (cdr (perject-current)))
+			 (perject-current)
 		   (perject--get-project-name
             "Add marked buffers to project: " 'current nil t nil
 			"The collection has no active project"
@@ -135,7 +135,7 @@ user choose the project."
         (let ((buffers-added nil))
           (dolist (buffer-name buffers)
             (let ((buffer (get-buffer buffer-name)))
-              (when (and (not (perject--is-assoc-with buffer proj))
+              (when (and (not (perject-is-assoc-with buffer proj))
                          (buffer-live-p buffer))
                 (perject-add-buffer-to-project buffer proj nil)
                 (push buffer-name buffers-added))))
@@ -160,8 +160,8 @@ In interactive use, PROJ defaults to the current project. If the current frame
 is not associated with any project or if a prefix argument is supplied, let the
 user choose the project."
   (interactive
-   (list (if (and (not current-prefix-arg) (cdr (perject--current)))
-			 (perject--current)
+   (list (if (and (not current-prefix-arg) (cdr (perject-current)))
+			 (perject-current)
 		   (perject--get-project-name
             "Remove marked buffers from project: " 'current nil t nil
 			"The collection has no active project"
@@ -171,7 +171,7 @@ user choose the project."
         (let ((buffers-removed nil))
           (dolist (buffer-name buffers)
             (let ((buffer (get-buffer buffer-name)))
-              (when (perject--is-assoc-with buffer proj)
+              (when (perject-is-assoc-with buffer proj)
                 (perject-remove-buffer-from-project buffer proj nil)
                 (push buffer-name buffers-removed))))
           (pcase buffers-removed

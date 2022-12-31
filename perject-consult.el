@@ -29,8 +29,8 @@
 	   (consult--buffer-query
 		:sort 'visibility
 		:predicate
-		(when (perject--current)
-		  (lambda (buffer) (perject--is-assoc-with buffer (perject--current))))
+		(when (perject-current)
+		  (lambda (buffer) (perject-is-assoc-with buffer (perject-current))))
         :as #'buffer-name)))
   "Buffer candidate source of buffers belonging to the current project for `consult-buffer'.")
 
@@ -48,8 +48,8 @@
 	   (consult--buffer-query
 		:sort 'visibility
 		:predicate
-		(when (perject--current)
-		  (lambda (buffer) (perject--is-assoc-with buffer (car (perject--current)))))
+		(when (perject-current)
+		  (lambda (buffer) (perject-is-assoc-with buffer (car (perject-current)))))
         :as #'buffer-name)))
   "Buffer candidate source of buffers belonging to the current collection for `consult-buffer'.")
 

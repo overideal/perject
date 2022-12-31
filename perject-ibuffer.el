@@ -17,6 +17,11 @@
 
 ;;;; Customization
 
+(defgroup perject-ibuffer nil
+  "Integrate `perject' with `ibuffer'."
+  :group 'perject
+  :prefix "perject-ibuffer-")
+
 (defcustom perject-ibuffer-buffer-to-project-message t
   "If non-nil, print a message when adding or removing a buffer from a project in `ibuffer'.
 This influences the commands `perject-ibuffer-add-to-project' and

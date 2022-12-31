@@ -18,6 +18,11 @@
 
 ;;;; Customization
 
+(defgroup perject-tab nil
+  "Add tab (window configuration) support to `perject'."
+  :group 'perject
+  :prefix "perject-tab-")
+
 (defface perject-tab-mode-line-face '((t :foreground "dark orange"))
   "The face used by the mode line indicator of perject tabs.")
 
@@ -30,8 +35,9 @@ It may have one of the following two values:
   the recent index. The function should return the string to display in the mode
   line.
 By default, the function `perject-tab-mode-line-indicator' is used. It displays
-\"[1/4]\" if the user is at the first tab out of four and \"⟨1/4⟩\" if that tab
-is also mutable."
+\"[1/4]\" if the user is at the first tab out of four, where the kind of
+brackets used is determined by the \"mutable\" states (see
+`perject-tab-states')."
   :type '(choice
 		  (const :tag "No mode line entry is shown for perject" nil)
 		  (function :tag "Custom function")))
@@ -63,14 +69,14 @@ tabs than to ordinary ones."
   :type 'integer)
 
 (defcustom perject-tab-messages
-  '(create delete toggle-mutable set reset index switch next previous recent)
+  '(create delete cycle-state set reset index switch next previous recent)
   "Whether to print informative messages when performing certain actions.
 The value of this variable is a list which may contain any of the following
 symbols, whose presence in the list leads to a message being printed in the
 indicated command:
 - 'create: `perject-tab-create',
 - 'delete: `perject-tab-delete',
-- 'toggle-mutable: `perject-tab-toggle-mutable',
+- 'cycle-state: `perject-tab-cycle-state',
 - 'set: `perject-tab-set'
 - 'reset: `perject-tab-reset',
 - 'index: `perject-tab-increment-index', `perject-tab-decrement-index',
@@ -81,7 +87,7 @@ indicated command:
   :type '(set
 		  (const :tag "`perject-tab-create'" create)
 		  (const :tag "`perject-tab-delete'" delete)
-		  (const :tag "`perject-tab-toggle-mutable'" toggle-mutable)
+		  (const :tag "`perject-tab-cycle-state'" cycle-state)
 		  (const :tag "`perject-tab-set'" set)
 		  (const :tag "`perject-tab-reset'" reset)
 		  (const :tag "`perject-tab-increment-index', `perject-tab-decrement-index'" index)
@@ -104,6 +110,38 @@ The default function simply prints an informative message."
   "A function called by `perject-tab-recent' if there is no recent tab.
 The default function simply prints an informative message."
   :type 'function)
+
+(defcustom perject-tab-states
+  '(("dynamic" perject-tab--dynamic-state "[" "]") ("immutable" ignore "⟦" "⟧") ("mutable" always "⟨" "⟩"))
+  "A list representing the different states a tab may be in.
+The state of a tab decides whether the current window configuration will be
+saved to that tab when switching from that tab to another one.
+
+By default, the following states are provided:
+- \"immutable\": An immutable tab is never updated.
+- \"mutable\": A mutable tab is always updated.
+- \"dynamic\": A dynamic tab is updated only if the new window configuration has
+  the same window layout. This test ignores details such as the values of point
+  and scrolling positions.
+
+The user may freely alter this list and add or remove states. However, it may
+not be empty. Furthermore, its order matters: The first entry of the list
+serves as a default value for newly created tabs and
+`perject-tab-cycle-state' cycles the states in the order given by the list.
+
+Each entry in the list is one possible state, which is given as a list:
+The first string is the name of the state. It is used to represent the state in
+text.
+The second entry is a function that is called with two arguments when switching
+tabs. Its first argument is the tab's project and the second is the tab itself.
+The window configuration that is current when the function is called
+(`current-window-configuration') will be used to update the tab if and only if
+the function returns a non-nil value.
+The remaining two arguments are two strings (usually brackets) used by
+`perject-tab-mode-line-indicator' to represent the state in the mode line. These
+only have an effect if `perject-tab-mode-line-format' is set to that function."
+  :type '(repeat
+		  (list string function string string)))
 
 (defcustom perject-tab-index-after-delete 'recent-previous
   "This variable determines the new index after deleting a tab.
@@ -155,10 +193,11 @@ The functions are called with three arguments: a dotted pair representing the
 project, the old index and the new index that was switched to."
   :type 'hook)
 
-(defcustom perject-tab-toggle-mutable-hook nil
-  "Hook run after toggling the \"mutable\" status of a tab using `perject-tab-toggle-mutable'.
+(defcustom perject-tab-cycle-state-hook nil
+  "Hook run after cyling the \"mutable\" state of a tab using `perject-tab-cycle-state'.
 The functions are called with two arguments, namely a dotted pair representing
-the project and the index being toggled.")
+the project and the index being toggled."
+  :type 'hook)
 
 
 
@@ -238,21 +277,35 @@ It may also be nil, in which case it defaults to the current project."
 			(setf index length))
 		index))))
 
-(defun perject-tab-mutable-p (num &optional proj)
-  "Return non-nil if the tab of project PROJ at index NUM is mutable.
-When a tab is mutable, switching from that tab to another one will save the
-current window configuration to that tab.
+(defun perject-tab-state (num &optional proj)
+  "Return the \"mutable\" state of the tab of project PROJ at index NUM.
+More precisely, the name of the state is returned.
 PROJ is a dotted pair with car a collection and cdr a project name.
 It may also be nil, in which case the current project of the selected frame is
 used."
-  (assoc 'mutable (nth (1- num) (perject-tab-tabs proj))))
+  (alist-get 'perject-state (nth (1- num) (perject-tab-tabs proj))))
 
-(defun perject-tab-make (&optional frame)
+(defun perject-tab-update-p (num &optional proj)
+  "Return non-nil if the tab of project PROJ at index NUM should be updated.
+This is determined by its state (see `perject-tab-states').
+PROJ is a dotted pair with car a collection and cdr a project name.
+It may also be nil, in which case the current project of the selected frame is
+used."
+  (let* ((tab (nth (1- num) (perject-tab-tabs proj)))
+		 (fun (car (alist-get (alist-get 'perject-state tab) perject-tab-states nil nil #'string-equal))))
+	;; If the state is invalid, use the default state.
+	(funcall (if (functionp fun) fun (cadar perject-tab-states))
+			 (or proj (perject--current)) tab)))
+
+(defun perject-tab-make (&optional state frame)
   "Create a new tab corresponding to the current window configuration in frame FRAME.
-If nil, FRAME defaults to the selected frame."
+The tab will have the state STATE. STATE may be a string or nil. If it is nil,
+use the default state (the car of `perject-tab-states'). If FRAME is nil, it
+defaults to the selected frame."
   (let ((tab-bar-tab-name-function perject-tab-name-function)
 		(tab-bar-tab-name-truncated-max perject-tab-name-truncated-max))
-	(tab-bar--tab frame)))
+	(append (tab-bar--tab frame)
+			(list (cons 'perject-state (or state (caar perject-tab-states)))))))
 
 (defun perject-tab-collection-tabs (name)
   "Return the list of all tabs belonging to some project within the collection named NAME."
@@ -295,10 +348,10 @@ After creating the tab, this function runs the hook
   (interactive (list (perject--current) nil (memq 'create perject-tab-messages)))
   (let* ((proj (or proj (perject-assert-project frame)))
 		 (index (or (perject-tab-index 'current proj frame) 0)))
-	(if (assoc proj perject-tab--tabs)
-		(setf (nthcdr index (alist-get proj perject-tab--tabs nil nil #'equal))
-			  (cons (perject-tab-make frame) (nthcdr index (alist-get proj perject-tab--tabs nil nil #'equal))))
-	  (push (list proj (perject-tab-make frame)) perject-tab--tabs))
+	(if-let ((list (assoc proj perject-tab--tabs)))
+		(setf (nthcdr index (cdr list))
+			  (cons (perject-tab-make nil frame) (nthcdr index (cdr list))))
+	  (push (list proj (perject-tab-make nil frame)) perject-tab--tabs))
 	(perject-tab--set-index 'recent (perject-tab-index 'current proj frame) proj frame)
 	(perject-tab--set-index 'current (1+ index) proj frame)
 	(when msg
@@ -344,10 +397,9 @@ After deleting the tab, this function runs the hook
 	  (message "Deleted tab of project '%s'" (perject-project-to-string proj)))
 	(run-hook-with-args 'perject-tab-delete-hook proj)))
 
-(defun perject-tab-toggle-mutable (num &optional proj msg)
-  "Toggle the \"mutable\" status of the tab of project PROJ at index NUM.
-When a tab is mutable, switching from that tab to another one will save the
-current window configuration to that tab.
+(defun perject-tab-cycle-state (num &optional proj msg)
+  "Cycle the \"mutable\" state of the tab of project PROJ at index NUM.
+The states are defined by `perject-tab-states'.
 PROJ is a dotted pair with car a collection and cdr a project name. It may also
 be nil, in which case the current project of the selected frame is used.
 In interactive use, NUM defaults to the current index and PROJ to the
@@ -356,28 +408,28 @@ If MSG is non-nil, also print a message. In interactive use, this is determined
 by the value of `perject-tab-messages'."
   (interactive (list (perject-tab-index 'current)
 					 (perject--current)
-					 (memq 'toggle-mutable perject-tab-messages)))
+					 (memq 'cycle-state perject-tab-messages)))
   (let* ((proj (or proj (perject-assert-project)))
-		 (tabs (progn (perject-tab-assert-index num proj) (perject-tab-tabs proj)))
-		 (mutable (perject-tab-mutable-p num proj)))
-	(if mutable
-		(setf (nth (1- num) tabs) (assoc-delete-all 'mutable (nth (1- num) tabs)))
-	  (setf (nth (1- num) tabs) (append (nth (1- num) tabs) (list (cons 'mutable nil)))))
+		 (tab (progn (perject-tab-assert-index num proj) (nth (1- num) (perject-tab-tabs proj))))
+		 (new-state (or (cadr (member (perject-tab-state num proj) (mapcar #'car perject-tab-states)))
+						(caar perject-tab-states))))
+	(setf (alist-get 'perject-state tab) new-state)
     (when msg
 	  (if (and (eq (perject-tab-index 'current) num)
 			   (equal proj (perject--current)))
-		  (message "Tab is now %s" (if mutable "immutable" "mutable"))
+		  (message "Tab is now %s" new-state)
 		(message "Tab %s of project '%s' is now %s"
 				 num (perject-project-to-string proj)
-				 (if mutable "immutable" "mutable"))))
-	(run-hook-with-args 'perject-tab-toggle-mutable-hook proj num)))
+				 new-state)))
+	(run-hook-with-args 'perject-tab-cycle-state-hook proj num)
+	(force-mode-line-update t)))
 
 (defun perject-tab-set (num &optional tab-or-frame proj msg)
   "Set the tab with index NUM in project PROJ to TAB-OR-FRAME.
 TAB-OR-FRAME may be a tab, a frame or nil. If it is a frame, use the current
 window configuration of that frame, defaulting to the selected frame if
 TAB-OR-FRAME is nil. If TAB-OR-FRAME is not a tab, ensure that the newly created
-tab has the same \"mutable\" status as the tab it is replacing.
+tab has the same \"mutable\" state as the tab it is replacing.
 PROJ is a dotted pair with car a collection and cdr a project name.
 It may also be nil, in which case it defaults to the current project.
 In interactive use, set the tab of the current index to the current window
@@ -391,10 +443,8 @@ by the value of `perject-tab-messages'."
 		 ;; If a new tab is created, ensure that the mutability stays the same.
 		 (tab (progn (perject-tab-assert-index num proj)
 					 (if (or (framep tab-or-frame) (null tab-or-frame))
-						 (if (perject-tab-mutable-p num proj)
-							 (append (perject-tab-make tab-or-frame) (list (cons 'mutable nil)))
-						   (perject-tab-make tab-or-frame))
-						  tab-or-frame))))
+						 (perject-tab-make (perject-tab-state num proj) tab-or-frame)
+					   tab-or-frame))))
 	(setf (nth (1- num) (perject-tab-tabs proj)) tab)
 	(when msg
 	  (if (and (eq (perject-tab-index 'current) num)
@@ -467,13 +517,14 @@ by the value of `perject-tab-messages'."
 
 ;;;;; Switching Tabs
 
-(defun perject-tab-switch (num &optional set-old msg)
+(defun perject-tab-switch (num &optional force-update msg)
   "Switch to the tab with index NUM (starting at one) of the current project in the selected frame.
-If the old tab (the one before switching) is mutable, also update its value to
-the current window configuration.
+If the state of the old tab (the one before switching) allows it (see
+`perject-tab-states'), also update its value to the current window
+configuration.
 This is the behavior in interactive use, but when called as a function it is
-influenced by the optional argument SET-OLD. If it is nil, behave as above. If
-it is t, always update and if it is 'ignore, never update the old tab. 
+influenced by the optional argument FORCE-UPDATE. If it is nil, behave as above.
+If it is t, always update and if it is 'ignore, never update the old tab.
 If MSG is non-nil, also print a message. In interactive use, this is determined
 by the value of `perject-tab-messages'.
 After switching tabs, this function runs the hook
@@ -484,10 +535,10 @@ After switching tabs, this function runs the hook
   (let ((proj (perject-assert-project))
 		(old-index (perject-tab-index 'current)))
 	(perject-tab-assert-index num proj)
-	;; If the current tab is mutable and the SET-OLD allows it, update the tab.
-	(when (or (eq set-old t)
-			  (and (not (eq set-old 'ignore)) old-index ;; (not (eq num old-index))
-				   (perject-tab-mutable-p old-index)))
+	;; If the current tab is mutable and FORCE-UPDATE allows it, update the tab.
+	(when (or (eq force-update t)
+			  (and (not (eq force-update 'ignore)) old-index
+				   (perject-tab-update-p old-index)))
 	  (perject-tab-set old-index))
 	(let ((tab-bar-tabs-function #'perject-tab--tabs-function)
 		  (current (nth (1- num) (perject-tab-tabs)))
@@ -607,9 +658,15 @@ LENGTH is the total number of indices. If it is 0, return nil."
 (defun perject-tab-mode-line-indicator (proj tabs current _)
   "Return a string for the mode line indicator of perject-tab."
   (and (cdr proj)
-	   (propertize (format (if (and current (perject-tab-mutable-p current proj)) "⟨%s/%s⟩" "[%s/%s]")
-						   (or current 0) (length tabs))
-				   'face 'perject-tab-mode-line-face)))
+	   ;; If there are no brackets, use the ones from the first entry
+	   (let ((brackets
+			  (or (and current
+					   (cdr (alist-get (perject-tab-state current proj)
+										perject-tab-states nil nil #'string-equal)))
+				  (cddar perject-tab-states))))
+		 (propertize (format "%s%s/%s%s" (car brackets) (or current 0) (length tabs)
+							 (cadr brackets))
+					 'face 'perject-tab-mode-line-face))))
 
 (defun perject-tab-no-tab ()
   "Inform the user that there is no tab."
@@ -620,6 +677,13 @@ LENGTH is the total number of indices. If it is 0, return nil."
   "Inform the user that there is no recent tab."
   (message "There currently is no recent tab for the project '%s'"
 		   (perject-project-to-string (perject--current))))
+
+(defun perject-tab--dynamic-state (_ tab)
+  "Return non-nil if the the window configuration of tab and the current one have the same window layout.
+This function ignores details such as the values of point and scrolling
+positions."
+  (let ((wc (alist-get 'wc tab)))
+	(or (not (window-configuration-p wc)) (window-configuration-equal-p wc (current-window-configuration)))))
 
 
 ;;;; Hook Functions for Perject
@@ -688,13 +752,13 @@ LENGTH is the total number of indices. If it is 0, return nil."
 
 (defun perject-tab--switch (old-proj proj frame)
   "React to perject switching from the collection or project OLD-PROJ to PROJ in frame FRAME."
+  ;; If the current tab of the old project is mutable, update it.
+  (when-let ((index (and (consp old-proj)
+						 (perject-tab-index 'current old-proj frame)))
+			 ((perject-tab-update-p index old-proj)))
+	(perject-tab-set index frame old-proj))
   (when (and (consp proj) (perject-tab-tabs proj))
 	(with-selected-frame frame
-	  ;; If the current tab of the old project is mutable, update it.
-	  (when-let ((index (and (consp old-proj) (perject-tab-tabs proj)
-							 (perject-tab-index 'current old-proj frame))))
-		(when (perject-tab-mutable-p index old-proj)
-		  (perject-tab-set index frame old-proj)))
 	  (perject-tab-switch (or (perject-tab-index 'current proj frame) 1) 'ignore))))
 
 

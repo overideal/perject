@@ -4,7 +4,7 @@
 
 ;; Author: overideal
 ;; Maintainer: overideal
-;; Version: 3.0
+;; Version: 3.2
 ;; Package-Requires: ((emacs "27.1") (dash "2.12"))
 ;; Homepage: https://gitlab.com/overideal/perject
 
@@ -222,7 +222,7 @@ with the remaining frames in a custom way."
 		  (const :tag "Do not alter the frames, keeping the collection" keep)
 		  (const :tag "Delete the frames, unless all frames belong to that collection" t)))
 
-(defcustom perject-kill-frames-on-project-delete t
+(defcustom perject-kill-frames-on-project-delete 'keep
   "How to deal with the frames belonging to a project being deleted.
 It may have one of the following values:
 - nil: Remove the project and collection from the frames.
@@ -876,8 +876,6 @@ the prefix argument determines this variable as specified by
 `perject-kill-buffers-by-default'.
 The variable `perject-confirmation-kill-buffers' decides if the user is asked
 for confirmation before any buffers are killed.
-An error is thrown if there is no collection to delete or all the open frames
-belong to the selected collection.
 This function runs the hooks `perject-before-delete-collection-hook' and
 `perject-after-delete-collection-hook'."
   (interactive

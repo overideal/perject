@@ -40,13 +40,16 @@ The variables that have no effect include:
 In =desktop-after-read-hook= and =desktop-save-hook= the functions can access =perject--desktop-current-project=
 to obtain the current project name (which might be nil).
 ** Issues
-Whether /perject/ switches to a newly created frame is controlled by the variable =perject-switch-to-new-frame=.
+Whether /perject/ raises and focuses a frame in certain situations depends on the value of the variable
+/perject-raise-and-focus-frame/. In that case, the function /select-frame-set-input-focus/ is used to raise and focus
+a frame in /perject-open-collection/ and at startup.
 However, depending on the window manager, there might be some weird behaviors with Emacs not focusing the frame properly.
-I did my testing with /KDE Plasma/ and used the elisp functions =select-frame= and =select-frame-set-input-focus= and depending
-on the value of the above variable, the focus might be correct or not. With this I mean that e.g. when opening a new project,
-the old frame stays at the "front" (my Emacs is always maximized) but the focus is on the newly restored frame "behind" it.
-It seems to me that this is a limitation that has to be fixed by customizing the window manager's settings  and there is no
-Emacs function that I can use to universally fix this. If anyone has a suggestion, feel free to open an issue.
+A value of /t/ for this variable works best for *KDE Plasma*, which I use. If the variable is /nil/, the old frame stays
+at the "front" (my Emacs is always maximized) but the focus is on the newly restored frame "behind" it.
+I suspect that the behavior depends on the used window manager and as such I added the above variable in order
+to disable the default behavior.
+By setting it to /nil/, the user can supply a custom function (add it to /perject-open-collection/ and /perject-after-init-hook/).
+
 * TODO Talk about perject-consult and perject-ibuffer; Find a good place for perject-ivy
 * Testing functions (working)
 - perject-delete-project

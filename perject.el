@@ -182,6 +182,17 @@ Note that two projects may have the same name but be in different projects, and
 the supplied function should produce different strings for them."
   :type '(choice string function))
 
+(defcustom perject-switch-to-new-collection 'new
+  "Whether and how to switch to a newly created collection within `perject-open-collection'.
+It may have one of the following values:
+- nil: Do not switch to the newly created collection.
+- 'new: Switch to the newly created collection in a new frame.
+- t: Switch to the newly created collection within the selected frame."
+  :type '(set
+		  (const :tag "Do not switch to the newly created collection" nil)
+		  (const :tag "Switch to the newly created collection in a new frame" new)
+		  (const :tag "Switch to the newly created collection within the selected frame" t)))
+
 (defcustom perject-save-on-close t
   "Whether a collection is saved when closing it using `perject-close-collection'.
 It may have one of the following values:
@@ -254,19 +265,27 @@ list are as follows:
 		  (const :tag "`perject-delete-collection'" delete)
 		  (const :tag "`perject-delete-project'" delete-project)))
 
-(defcustom perject-switch-to-new-frame '(open create)
-  "Whether to switch to a newly created frame.
-The value of this variable is a list which may contain any of the following
-symbols, whose presence in the list has the mentioned effect:
-- 'open: Switch after opening a project using `perject-open-collection'.
-- 'create: Switch after creating a new project using `perject-open-collection'.
-- 'reload: Switch after reloading a project using `perject-reload-collection'.
-In particular, if this variable is nil (i.e. the empty list), never switch to a
-newly created frame."
+(defcustom perject-raise-and-focus-frame t
+  "Whether perject should try to raise and focus a frame in certain situations.
+This might or might not yield the desired result, depending on the window
+manager used. If disabled (by modifying this variable), the user may want to
+write a custom function to manually raise and focus a frame.
+
+This variable may have one of the following values:
+- nil: Do not perform any manual raising or focusing.
+- 'open: Raise and focus the frame first restored by `perject-open-collection'.
+- 'init: Raise and focus the first frame of the collection that was last
+  restored at startup.
+- t: Raise and focus the frame in both `perject-open-collection' and at
+  startup."
   :type '(set
-		  (const :tag "Switch after opening a project using `perject-open-collection'" open)
-		  (const :tag "Switch after creating a new project using `perject-open-collection'" create)
-		  (const :tag "Switch after reloading a project using `perject-reload-collection'" reload)))
+		  (const :tag "Do not perform any manual raising or focusing" nil)
+		  (const :tag "Raise and focus the frame first restored by
+		  `perject-open-collection'" open)
+		  (const :tag "Raise and focus the first frame of the collection that
+		  was last restored at startup" init)
+		  (const :tag "Raise and focus the frame in both
+		  `perject-open-collection' and at startup" t)))
 
 (defcustom perject-messages
   '(add-buffer remove-buffer next-collection previous-collection next-project previous-project)
@@ -664,7 +683,13 @@ This function is used only if `perject-frame-title-format' is t."
   "Load collections from the last session, set up hooks and select the last restored frame.
 The collections are stored in desktop files. The variable `perject-load-at-startup'
 determines which collections are loaded automatically. However, if specified, the
-command line option `perject-command-line-option' takes priority."
+command line option `perject-command-line-option' takes priority.
+
+After starting Emacs there is a single frame; namely the selected \"starting
+frame\". It will be reused as the frame of a newly opened collection if
+`perject-reuse-starting-frame' is non-nil.
+Whether the first frame of the collection that was last restored will be
+selected and focused is determined by `perject-raise-and-focus-frame'."
   (let* ((current-frame (selected-frame))
          (all-collections (perject-get-collections))
          (cols-to-load
@@ -694,18 +719,16 @@ command line option `perject-command-line-option' takes priority."
 		(when (cadr cols)
 		  (warn "Perject: The following collections do not exist: %s" (string-join (cadr cols) ", "))
 		  (setq cols-to-load (car cols)))))
-	;; At the beginning, there is a single frame; namely the selected "starting
-	;; frame".
-	;; If `perject-reuse-starting-frame' is non-nil, we may reuse this frame for
-	;; one of our projects, but as soon as it is "claimed" (or somehow deleted),
-	;; we cannot use it again.
+	;; If `perject-reuse-starting-frame' is non-nil, we may reuse the "starting
+	;; frame" for a collection, but as soon as it is "claimed" (or somehow
+	;; deleted), it cannot be used again.
 	;; This behavior is obtained by setting `perject--desktop-reuse-frames'.
-	(let ((perject-switch-to-new-frame nil)
-		  (perject--desktop-reuse-frames (lambda (frame)
+	(let ((perject--desktop-reuse-frames (lambda (frame)
 										   (and
 											(eq frame current-frame)
 											(not (perject-current frame)))))
-		  (starting-frame-claimed (not perject-reuse-starting-frame)))
+		  (starting-frame-claimed (not perject-reuse-starting-frame))
+		  perject-raise-and-focus-frame)
       (dolist (name cols-to-load)
 		(when (or (member current-frame perject--desktop-restored-frames)
 				  (not (frame-live-p current-frame)))
@@ -718,10 +741,10 @@ command line option `perject-command-line-option' takes priority."
     ;; Add the hooks specified in `perject-auto-add-hooks'.
     (dolist (hook perject-auto-add-hooks)
       (add-hook hook 'perject--auto-add-buffer))
-	;; Select the last restored frame.
-	(when-let ((frames (car (last (remove 'nil (mapcar #'perject-get-frames cols-to-load))))))
-	  (select-frame-set-input-focus (car frames))
-	  (raise-frame (car frames)))
+	;; Select the first restored frame of the collection that was last restored.
+	(when-let (((memq perject-raise-and-focus-frame '(t init)))
+			   (frames (car (last (remove 'nil (mapcar #'perject-get-frames cols-to-load))))))
+	  (select-frame-set-input-focus (car frames)))
     (run-hook-with-args 'perject-after-init-hook cols-to-load)))
 
 (defun perject--exit ()
@@ -730,8 +753,10 @@ The variabe `perject-save-on-exit' determines which collections are saved.
 This function is called by `perject-mode' before exiting Emacs (using
 `kill-emacs-hook')."
   (perject-save-collections 'exit t t)
-  ;; Reverse the list of active collections, so that the newest collection is last.
-  (setq perject--previous-collections (perject-get-collections 'active)))
+  ;; Reverse the list of active collections, so that when restoring the
+  ;; collections in the next section the order of the resulting list is the same
+  ;; as before.
+  (setq perject--previous-collections (nreverse (perject-get-collections 'active))))
 
 
 ;;;; Creating, Renaming and Deleting
@@ -758,30 +783,28 @@ collection and cdr a project name."
 			 (list (cdr proj)))))
   (run-hook-with-args 'perject-after-create-hook proj))
 
-(defun perject-create-new-frame (proj &optional no-select)
-  "Create a new frame for PROJ and select it, unless NO-SELECT is non-nil.
+(defun perject-create-new-frame (&optional proj)
+  "Create a new frame for the project PROJ and select it.
 PROJ may be a collection name or a dotted pair with car a collection and cdr a
-project name.
-In interactive use, the user may select PROJ from the projects of the current
-collection. If there is no current collection or a single prefix argument is
-supplied, the user may select from all projects. In any other case, the user may
-select from all collections."
+project name. It may also be nil in which case this command behaves like
+`make-frame-command'.
+In interactive use, PROJ defaults to the current project.
+If there is no current project or if a single prefix argument is supplied, the
+user may select PROJ from the list of all projects. In any other case, the user
+can choose from the list of collections."
   (interactive
    (list
-    (if (or (not current-prefix-arg) (equal current-prefix-arg '(4)))
-		(perject--get-project-name
-		 "Create new frame for project: "
-		 (if (equal current-prefix-arg '(4)) 'all 'current)
-		 nil t (perject-current)
-		 "No project exists" "No project specified")
-      (perject--get-collection-name
-	   "Create new frame for collection: "
-	   'active nil t (car (perject-current))
-	   "No collection exists" "No collection specified"))))
-  (let ((frame (make-frame)))
-	(with-selected-frame frame
-	  (perject-set-current proj))
-	(unless no-select (select-frame-set-input-focus frame))))
+	(or (and (not current-prefix-arg) (perject-current))
+		(if (equal current-prefix-arg '(4))
+			(perject--get-project-name
+			 "Create new frame for project: "
+			 (if (equal current-prefix-arg '(4)) 'all 'current)
+			 nil t (perject-current)
+			 "No project exists" "No project specified")
+		  (perject--get-collection-name
+		   "Create new frame for collection: "
+		   'active nil t nil "No collection exists" #'ignore)))))
+  (perject-switch proj (make-frame-command)))
 
 (defun perject-rename (proj new-proj)
   "Rename the collection or project PROJ to NEW-PROJ.
@@ -881,7 +904,7 @@ This function runs the hooks `perject-before-delete-collection-hook' and
   (interactive
    (list
     (perject--get-collection-name
-     "Delete collection: " 'active nil t (car (perject-current))
+     "Delete collection: " 'all nil t (car (perject-current))
      "There currently is no collection to delete"
 	 "No collection specified")
     (or (and (member 'delete perject-kill-buffers-by-default) (not current-prefix-arg))
@@ -979,13 +1002,14 @@ This function runs the hooks `perject-before-delete-project-hook' and
 ;; associated with project" errors, if the project in which this function is
 ;; called is already associated with the buffer.
 (defun perject-open-collection (name)
-  "Open the collection named NAME and switch to one of its corresponding frames (if existent).
-This means that all its projects (which in turn correspond to buffers and window
-configurations) and frames are restored from the corresponding desktop file.
-Whether the frame switch happens depends on the value of
-`perject-switch-to-new-frame'.
-Note that the switching might not work, depending on the window manager. If
-there is no collection named NAME yet, create it and open a frame for it.
+  "Create or open the collection named NAME.
+This means that all projects that belonged to the collection are restored from
+the corresponding desktop file. Furthermore, this function switches to one of
+the restored frames (if any). Depending on the value of
+`perject-raise-and-focus-frame', the first restored frame will be raised and
+focused.
+If there is no collection named NAME yet, create it and switch to it as
+specified by `perject-switch-to-new-collection'.
 Before creating the collection, run `perject-before-create-hook' and afterwards
 run `perject-after-create-hook'.
 If no new collection is created, run the hooks `perject-before-open-hook' and
@@ -1016,11 +1040,13 @@ In interactive use, the user is asked for the collection name."
 		(dolist (hook perject-auto-add-hooks)
 		  (add-hook hook #'perject--auto-add-buffer))
 		(when (and perject--desktop-restored-frames
-				   (memq 'open perject-switch-to-new-frame))
+				   (memq perject-raise-and-focus-frame '(t open)))
 		  (select-frame-set-input-focus (car perject--desktop-restored-frames)))
 		(run-hook-with-args 'perject-after-open-hook name))
 	(perject-create name)
-    (perject-create-new-frame name (not (memq 'create perject-switch-to-new-frame)))))
+	(pcase perject-switch-to-new-collection
+	  ('new (perject-create-new-frame name))
+	  ('t (perject-switch name)))))
 
 
 (defun perject-open-collection-in-new-instance (name)
@@ -1124,8 +1150,6 @@ If the optional argument KILL-BUFFERS is non-nil, kill all buffers that belong
 to that collection and to no other collection or project before reopening the
 collection. In interactive use, the prefix argument determines the value of
 KILL-BUFFERS as specified by `perject-kill-buffers-by-default'.
-The variable `perject-switch-to-new-frame' decides if the focus is switched to
-one of the created frames.
 The variable `perject-confirmation' decides whether the user is asked for
 confirmation before the collection is reloaded. Furthermore, the variables
 `perject-confirmation-kill-frames' and `perject-confirmation-kill-buffers' can
@@ -1149,7 +1173,7 @@ This function runs the hooks `perject-before-reload-hook' and
 			(apply-partially (-flip #'member) frames))
 		   (perject-confirmation-kill-buffers
 			(and (member 'reload perject-confirmation-kill-buffers) (list 'close)))
-		   unused-frames perject-switch-to-new-frame perject-save-on-close)
+		   unused-frames perject-save-on-close)
 	  (run-hook-with-args 'perject-before-reload-hook name frames buffers)
 	  (perject-close-collection name nil kill-buffers)
 	  (perject-open-collection name)
@@ -2133,8 +2157,7 @@ don't print any messages."
 	(dolist (frame ignored-frames)
 	  (set-frame-parameter frame 'desktop-dont-save nil))
 	(unless no-msg
-	  (message "Perject: Saved %s"
-			   (if name (format "project %s." name) "anonymous project.")))))
+	  (message "Perject: Saved collection %s" name))))
 
 
 (defun perject-desktop-restore-frameset-advice ()

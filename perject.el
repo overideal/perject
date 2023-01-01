@@ -562,6 +562,29 @@ This hook corresponds to `desktop-save-hook'."
 
 ;;;; Internal Variables
 
+(defvar perject-mode-line-current
+  `(:propertize
+	(:eval (if (or (not (perject-current)) (perject-is-assoc-with (current-buffer) (perject-current)))
+			   "-" "*"))
+	mouse-face mode-line-highlight
+	local-map ,(purecopy (make-mode-line-mouse-map
+						 'mouse-1
+						 #'perject-mode-line-toggle-current-buffer))
+	help-echo
+	 (lambda (window _object _point)
+	   (with-selected-window window
+		 (let ((proj (perject-current)))
+		   (if (not (car proj))
+			   "No current project"
+			 (format "Current buffer is%s associated with current project '%s'\nmouse-1: Toggle"
+					 (if (perject-is-assoc-with (current-buffer) proj) "" " not")
+					 (perject-project-to-string proj)))))))
+  "Mode line construct to indicate if the current buffer belongs to the current project.
+It displays a dash (-) if there is no current project or the current buffer
+belongs to the current project and an asterix (*) otherwise.")
+
+(put 'perject-mode-line-current 'risky-local-variable t)
+
 (defvar-local perject-buffer nil
   "The list of projects to which the current buffer belongs.
 Each entry is a cons cell with the car being the collection name and the cdr
@@ -659,7 +682,6 @@ Should not be modified by the user.")
 		(when (perject-current frame)
 		  (set-frame-parameter frame 'name nil))))))
 
-
 (defun perject-mode-line-indicator (col proj)
   "Return a string for the mode line indicator of perject.
 COL is the current collection and PROJ is the current project name."
@@ -677,7 +699,6 @@ This function is used only if `perject-frame-title-format' is t."
   (concat invocation-name "@" system-name ":" (car perj)
 		  (when (cdr perj)
 			(concat "|" (cdr perj)))))
-
 
 (defun perject--init ()
   "Load collections from the last session, set up hooks and select the last restored frame.
@@ -2027,6 +2048,16 @@ collection with the the specified name, an error is thrown."
 
 
 ;;;; Helper Functions
+
+(defun perject-mode-line-toggle-current-buffer (event)
+  "Toggle the association between the current buffer and the current project from the mode-line."
+  (interactive "e")
+  (when-let ((proj (perject-current))
+			 ((car proj))
+			 (buffer (window-buffer (posn-window (event-start event)))))
+    (if (perject-is-assoc-with buffer proj)
+		(perject-remove-buffer-from-project buffer proj)
+	  (perject-add-buffer-to-project buffer proj))))
 
 (defun perject--auto-add-buffer (&optional ignore)
   "Silently add the current buffer to projects honoring `perject-auto-add-function'.

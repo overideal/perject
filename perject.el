@@ -2107,9 +2107,8 @@ collection and cdr a project name."
 
 ;;;; Interface to desktop.el
 
-(defun perject-desktop-load (name &optional no-msg)
+(defun perject-desktop-load (name)
   "Using `desktop-read' load the collection named NAME from the corresponding desktop file.
-If the optional argument NO-MSG is non-nil, don't print any messages.
 This function also adds NAME to the alist of active collections `perject-collections'."
   (let ((desktop-var-serdes-funs
 		 (cons
@@ -2119,12 +2118,17 @@ This function also adds NAME to the alist of active collections `perject-collect
 				  (append perject-buffer projects)))
 		  desktop-var-serdes-funs))
 		(desktop-load-locked-desktop t)
-		;; Suppress messages from `desktop-read'.
-		(inhibit-message t)
-		(message-log-max nil))
-	;; Temporarily set the variable to NO-MSG, so we have the information
-	;; available in `perject-desktop-restore-frameset-advice'.
-	(setq perject--desktop-restored-frames no-msg)
+		;; `desktop-read' prints information about the loaded desktop file,
+		;; which we want to print ourselves. However, all other messages (e.g.
+		;; those printed by the modes loaded when restoring buffers) should be
+		;; visible. We also want to print any warnings (which in the code are
+		;; just messages) that `desktop-read' produces.
+		;; To silence `desktop-read' temporarily, we locally bind
+		;; `inhibit-message' and `message-log-max' and change them within
+		;; `desktop-after-read-hook'.
+		(inhibit-message inhibit-message)
+		(message-log-max message-log-max)
+		(desktop-after-read-hook (append desktop-after-read-hook (list #'perject-desktop-print-info))))
 	;; Unlike `desktop-save', `desktop-load' seems to have a weird
 	;; implementation, so we need the following line since otherwise desktop
 	;; thinks that it is loading the already loaded desktop again and refuses to
@@ -2190,6 +2194,40 @@ don't print any messages."
 	(unless no-msg
 	  (message "Perject: Saved collection %s" name))))
 
+(defun perject-desktop-print-info ()
+  "Print information about the collection that was just restored.
+This also sets `inhibit-message' and `message-log-max' (which were locally bound
+when this function is called).
+Never call this function manually."
+  ;; Code adapted from `desktop-read'.
+  ;; We access the variables from `desktop-read'.
+  (let* ((col (car perject--desktop-current))
+		(projects (cdr perject--desktop-current)))
+	(message "Perject: collection '%s'%s: %s%s%d buffer%s restored%s%s."
+			 col
+			 (if projects
+				 (concat " (" (string-join projects ", ") ")") "")
+			 (if desktop-saved-frameset
+				 (let ((fn (length (frameset-states desktop-saved-frameset))))
+				   (format "%d frame%s, "
+						   fn (if (= fn 1) "" "s")))
+			   "")
+			 (if (featurep 'perject-tab)
+				 ;; We cannot use `perject-tab-collection-tabs' since the
+				 ;; corresponding variable is set later.
+				 (let ((fn (length (seq-mapcat #'cdr perject-tab--tabs-current))))
+				   (format "%d tab%s, " fn (if (= fn 1) "" "s")))
+			   "")
+			 desktop-buffer-ok-count
+			 (if (= 1 desktop-buffer-ok-count) "" "s")
+			 (if (< 0 desktop-buffer-fail-count)
+				 (format ", %d failed to restore" desktop-buffer-fail-count)
+			   "")
+			 (if desktop-buffer-args-list
+				 (format ", %d to restore lazily"
+						 (length desktop-buffer-args-list))
+			   "")))
+  (setq inhibit-message t message-log-max nil))
 
 (defun perject-desktop-restore-frameset-advice ()
   "Like `desktop-restore-frameset', but allow for more parameters from `frameset-restore'.
@@ -2198,46 +2236,19 @@ Namely, the variables `perject--desktop-reuse-frames' and
 `frameset-restore'.
 This function also sets `perject--desktop-restored-frames'."
   (when (desktop-restoring-frameset-p)
-	(let ((no-msg perject--desktop-restored-frames))
-	  ;; Reset `perject--desktop-restored-frames'.
-	  (setq perject--desktop-restored-frames nil)
-      (frameset-restore
-	   desktop-saved-frameset
-	   :reuse-frames perject--desktop-reuse-frames
-	   ;; Use the cleanup to set the list of restored frames.
-	   :cleanup-frames (lambda (frame action)
-						 (when (memq action '(:reused :created))
-                           (push frame perject--desktop-restored-frames))
-						 (when (functionp perject--desktop-cleanup-frames)
-						   (funcall cleanup-frames frame action)))
-	   :force-display desktop-restore-in-current-display
-	   :force-onscreen desktop-restore-forces-onscreen)
-	  ;; Print information.
-	  ;; Code adapted from `desktop-read'.
-	  ;; We access the variables from `desktop-read'.
-	  ;; Since we suppress messages when calling `desktop-read',
-	  ;; we need to make sure they are printed here.
-	  (unless no-msg
-		(let ((inhibit-message nil)
-			  (message-log-max t))
-		  (message "Perject: collection '%s'%s: %s%d buffer%s restored%s%s."
-				   (car perject--desktop-current)
-				   (when (cdr perject--desktop-current)
-					 (concat " (" (string-join (cdr perject--desktop-current) ", ") ")"))
-				   (if desktop-saved-frameset
-					   (let ((fn (length (frameset-states desktop-saved-frameset))))
-						 (format "%d frame%s, "
-								 fn (if (= fn 1) "" "s")))
-					 "")
-				   desktop-buffer-ok-count
-				   (if (= 1 desktop-buffer-ok-count) "" "s")
-				   (if (< 0 desktop-buffer-fail-count)
-					   (format ", %d failed to restore" desktop-buffer-fail-count)
-					 "")
-				   (if desktop-buffer-args-list
-					   (format ", %d to restore lazily"
-							   (length desktop-buffer-args-list))
-					 "")))))))
+	;; Reset `perject--desktop-restored-frames'.
+	(setq perject--desktop-restored-frames nil)
+    (frameset-restore
+	 desktop-saved-frameset
+	 :reuse-frames perject--desktop-reuse-frames
+	 ;; Use the cleanup to set the list of restored frames.
+	 :cleanup-frames (lambda (frame action)
+					   (when (memq action '(:reused :created))
+                         (push frame perject--desktop-restored-frames))
+					   (when (functionp perject--desktop-cleanup-frames)
+						 (funcall cleanup-frames frame action)))
+	 :force-display desktop-restore-in-current-display
+	 :force-onscreen desktop-restore-forces-onscreen)))
 
 (provide 'perject)
 ;;; perject.el ends here

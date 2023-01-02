@@ -79,10 +79,19 @@ This influences the command `perject-sort-projects'.")
   "The face used for displaying the name of the non-current project when ordering projects.
 This influences the command `perject-sort-projects'.")
 
+(defcustom perject-switch-to-new-collection 'new
+  "Whether and how to switch to a newly created collection within `perject-open-collection'.
+It may have one of the following values:
+- nil: Do not switch to the newly created collection.
+- 'new: Switch to the newly created collection in a new frame.
+- t: Switch to the newly created collection within the selected frame."
+  :type '(set
+		  (const :tag "Do not switch to the newly created collection" nil)
+		  (const :tag "Switch to the newly created collection in a new frame" new)
+		  (const :tag "Switch to the newly created collection within the selected frame" t)))
 
 (defcustom perject-load-at-startup nil
   "The variable controls which collections are automatically loaded at startup.
-
 It may have one of the following values:
 - nil: Load no collection.
 - 'all: Load all collections.
@@ -112,7 +121,6 @@ they can be manually sorted, which will be remembered over restarts of Emacs."
 
 (defcustom perject-save-on-exit 'all
   "The variable controls which collections are automatically saved when exiting Emacs.
-
 It may have one of the following values:
 - nil: Don't save any collections.
 - 'all: Save all active collections.
@@ -130,68 +138,6 @@ It may have one of the following values:
 		  (repeat :tag "Save the specified collections (if existent)"
 				  (choice string (const not)))
 		  (function :tag "Custom function")))
-
-(defcustom perject-buffers-not-to-save-function nil
-  "Function identifying buffers that are to be excluded when saving a collection to its desktop file.
-Buffers not belonging to the current collection are never saved.
-If this variable is nil, no additional filtering takes place.
-The function is called with five arguments: the dotted pair consisting of the
-current collection name as a car and the current project name as a cdr (the
-latter one could be nil), the name of the visited file, the buffer name, the
-major mode and the list of active minor modes. It should return nil if the
-buffer should not have its state saved in the desktop file.
-This variable corresponds to `desktop-buffers-not-to-save-function'."
-  :type '(choice function (const nil)))
-
-(defcustom perject-auto-add-function nil
-  "A function used to control which buffers are automatically associated with projects.
-When a hook in `perject-auto-add-hooks' runs, this function is called in order
-to decide to which projects the current buffer should be added to.
-It is called with two arguments. The first argument is the current buffer. The
-second is a cons cell with car a collection name and cdr a project name. The
-project name may also be nil.
-The function should return a list of collection project pairs to which the
-buffer should be added. By returning nil (the empty list) the buffer is not
-added to any project.
-Setting this variable to nil means always add the buffer to the current project.
-This variable is intended to allow for advanced customization and thus for the
-majority of use cases, the value nil should suffice."
-  :type '(choice function (const nil)))
-
-;; There is no hook that is run after an arbitrary buffer is created.
-;; See: https://stackoverflow.com/questions/7899949/is-there-an-emacs-hook-that-runs-after-every-buffer-is-created
-(defcustom perject-auto-add-hooks '(find-file-hook clone-indirect-buffer-hook dired-mode-hook)
-  "A list of hooks in which the current buffer is added to the current project.
-This is used to automatically add newly created buffers to the current project.
-The following hooks could be interesting to the user:
-`find-file-hook', `clone-indirect-buffer-hook',
-`buffer-list-update-hook', `change-major-mode-hook' and many mode hooks.
-Modifcations of this variable only take effect after (re)enabling
-`perject-mode'.
-Internally, the function `perject--auto-add-buffer' is used."
-  :type '(list variable))
-
-(defcustom perject-project-format "%s|%s"
-  "How to print projects and their respective collections in text.
-This can be a format string (like `format' uses) with two '%s', the first of
-which will be replaced by the collection name, the second by the project name.
-It may also be a custom function which is called with two string arguments,
-namely the collection name and the project name and should return the name to be
-displayed.
-Note that two projects may have the same name but be in different projects, and
-the supplied function should produce different strings for them."
-  :type '(choice string function))
-
-(defcustom perject-switch-to-new-collection 'new
-  "Whether and how to switch to a newly created collection within `perject-open-collection'.
-It may have one of the following values:
-- nil: Do not switch to the newly created collection.
-- 'new: Switch to the newly created collection in a new frame.
-- t: Switch to the newly created collection within the selected frame."
-  :type '(set
-		  (const :tag "Do not switch to the newly created collection" nil)
-		  (const :tag "Switch to the newly created collection in a new frame" new)
-		  (const :tag "Switch to the newly created collection within the selected frame" t)))
 
 (defcustom perject-save-on-close t
   "Whether a collection is saved when closing it using `perject-close-collection'.
@@ -347,20 +293,6 @@ symbols, whose presence in the list has the mentioned effect:
 		  (const :tag "Ask before killing buffers in `perject-reload-collection'" reload)
 		  (const :tag "Ask before killing buffers in `perject-delete-project'" delete-project)))
 
-(defcustom perject-empty-project-delete 'ask
-  "This variable controls what happens when the last buffer is removed from a project.
-It may have one of the following values:
-- t: Delete the project.
-- 'ask: Ask the user whether the project should be deleted.
-- nil: Don't delete the project.
-- A function: The function is called with the project name as a single argument.
-  It should return non-nil if and only if the project is to be kept."
-  :type '(choice
-		  (const :tag "Delete the project" t)
-		  (const :tag "Ask the user whether the project should be deleted" ask)
-		  (const :tag "Don't delete the project" nil)
-		  (function :tag "Custom function")))
-
 (defcustom perject-mode-line-format #'perject-mode-line-indicator
   "This variable determines the mode line indicator of perject.
 It may have one of the following two values:
@@ -397,6 +329,57 @@ is loaded. If this variable is nil, that frame is not altered."
   :type '(choice
 		  (const :tag "Reuse starting frame" t)
 		  (const :tag "Don't reuse starting frame" nil)))
+
+(defcustom perject-buffers-not-to-save-function nil
+  "Function identifying buffers that are to be excluded when saving a collection to its desktop file.
+Buffers not belonging to the current collection are never saved.
+If this variable is nil, no additional filtering takes place.
+The function is called with five arguments: the dotted pair consisting of the
+current collection name as a car and the current project name as a cdr (the
+latter one could be nil), the name of the visited file, the buffer name, the
+major mode and the list of active minor modes. It should return nil if the
+buffer should not have its state saved in the desktop file.
+This variable corresponds to `desktop-buffers-not-to-save-function'."
+  :type '(choice function (const nil)))
+
+(defcustom perject-auto-add-function nil
+  "A function used to control which buffers are automatically associated with projects.
+When a hook in `perject-auto-add-hooks' runs, this function is called in order
+to decide to which projects the current buffer should be added to.
+It is called with two arguments. The first argument is the current buffer. The
+second is a cons cell with car a collection name and cdr a project name. The
+project name may also be nil.
+The function should return a list of collection project pairs to which the
+buffer should be added. By returning nil (the empty list) the buffer is not
+added to any project.
+Setting this variable to nil means always add the buffer to the current project.
+This variable is intended to allow for advanced customization and thus for the
+majority of use cases, the value nil should suffice."
+  :type '(choice function (const nil)))
+
+;; There is no hook that is run after an arbitrary buffer is created.
+;; See: https://stackoverflow.com/questions/7899949/is-there-an-emacs-hook-that-runs-after-every-buffer-is-created
+(defcustom perject-auto-add-hooks '(find-file-hook clone-indirect-buffer-hook dired-mode-hook)
+  "A list of hooks in which the current buffer is added to the current project.
+This is used to automatically add newly created buffers to the current project.
+The following hooks could be interesting to the user:
+`find-file-hook', `clone-indirect-buffer-hook',
+`buffer-list-update-hook', `change-major-mode-hook' and many mode hooks.
+Modifcations of this variable only take effect after (re)enabling
+`perject-mode'.
+Internally, the function `perject--auto-add-buffer' is used."
+  :type '(list variable))
+
+(defcustom perject-project-format "%s|%s"
+  "How to print projects and their respective collections in text.
+This can be a format string (like `format' uses) with two '%s', the first of
+which will be replaced by the collection name, the second by the project name.
+It may also be a custom function which is called with two string arguments,
+namely the collection name and the project name and should return the name to be
+displayed.
+Note that two projects may have the same name but be in different projects, and
+the supplied function should produce different strings for them."
+  :type '(choice string function))
 
 (defcustom perject-valid-naming-chars '(?_ ?- ? )
   "A list of characters that may be used to name a project.
@@ -1642,9 +1625,7 @@ printed upon successfully removing the buffer from the project.
 If the buffer is not associated with the project, an error is thrown.
 Note that this function does not check whether PROJ is an existent project and
 whether BUFFER has already been killed, so caller functions should take care of
-that.
-The variable `perject-empty-project-delete' determines what happens if the last
-buffer of a project is removed."
+that."
   (interactive
    (list
 	(current-buffer)
@@ -1674,19 +1655,7 @@ buffer of a project is removed."
 	(setq perject-buffer (delete proj perject-buffer)))
   (when msg
     (message "Removed buffer '%s' from project '%s'."
-			 (buffer-name buffer) (perject-project-to-string proj)))
-  (when (and
-		 (null (perject-get-buffers proj))
-		 (or (eq perject-empty-project-delete t)
-			 (and (eq perject-empty-project-delete 'ask)
-                  (y-or-n-p
-				   (format
-					"Project '%s' is not associated with any buffers anymore. Delete it?"
-					(perject-project-to-string proj))))
-			 (and (functionp perject-empty-project-delete)
-				  (funcall perject-empty-project-delete proj))))
-    (let (perject-confirmation)
-      (perject-delete-collection name))))
+			 (buffer-name buffer) (perject-project-to-string proj))))
 
 (defun perject-print-buffer-projects (&optional buffer)
   "Print the names of the projects with which the buffer BUFFER is associated.

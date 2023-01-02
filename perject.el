@@ -567,9 +567,9 @@ This hook corresponds to `desktop-save-hook'."
 	(:eval (if (or (not (perject-current)) (perject-is-assoc-with (current-buffer) (perject-current)))
 			   "-" "*"))
 	mouse-face mode-line-highlight
-	local-map ,(purecopy (make-mode-line-mouse-map
+	local-map ,(make-mode-line-mouse-map
 						 'mouse-1
-						 #'perject-mode-line-toggle-current-buffer))
+						 #'perject-mode-line-toggle-current-buffer)
 	help-echo
 	 (lambda (window _object _point)
 	   (with-selected-window window

@@ -172,6 +172,21 @@ The tab switched to is determined by `perject-tab-index-after-delete'."
 		  (const :tag "Switch tab after delete" t)
 		  (const :tag "Do not switch tab after delete" t)))
 
+(defcustom perject-tab-extra-data '((buffers . perject-tab-get-visible-buffers))
+  "List representing extra data that is saved on tab creation.
+For each entry, extra data will be saved to every new tab created. This can
+later be accessed, e.g. by the functions in `perject-tab-states'.
+Each entry is dotted pair with car a symbol cdr a function. The symbol is used
+as the key of the new data within every tab (which is essentially an alist). To
+produce the data, the specified function is called without any arguments when
+the tab is created (i.e. when the current window configuration is that being
+saved to the tab) and its return value is saved.
+
+Note that the \"dynamic\" state (see `perject-tab-states') depends on the entry
+\"buffers\" being in this list."
+  :type '(repeat
+		  (cons symbol function)))
+
 
 ;;;; Hooks
 
@@ -198,7 +213,6 @@ project, the old index and the new index that was switched to."
 The functions are called with two arguments, namely a dotted pair representing
 the project and the index being toggled."
   :type 'hook)
-
 
 
 ;;;; Internal Variables
@@ -264,7 +278,7 @@ In interactive use, FRAME is the selected frame and the value of MSG is
 determined by `perject-tab-messages'.
 After creating the tab, this function runs the hook
 `perject-tab-create-hook'."
-  (interactive (list (perject-current) nil (memq 'create perject-tab-messages)))
+  (interactive (list nil nil (memq 'create perject-tab-messages)))
   (let* ((proj (or proj (perject-assert-project frame)))
 		 (index (or (perject-tab-index 'current proj frame) 0)))
 	(if-let ((list (assoc proj perject-tab--tabs)))
@@ -286,7 +300,7 @@ In interactive use, FRAME is the selected frame and the value of MSG is
 determined by `perject-tab-messages'.
 After deleting the tab, this function runs the hook
 `perject-tab-delete-hook'."
-  (interactive (list (perject-current) nil (memq 'delete perject-tab-messages)))
+  (interactive (list nil nil (memq 'delete perject-tab-messages)))
   (let* ((proj (or proj (perject-assert-project frame)))
 		 (tabs (perject-tab-assert-tabs proj))
 		 (length (length tabs))
@@ -325,8 +339,7 @@ In interactive use, NUM defaults to the current index and PROJ to the
 current project.
 If MSG is non-nil, also print a message. In interactive use, this is determined
 by the value of `perject-tab-messages'."
-  (interactive (list (perject-tab-index 'current)
-					 (perject-current)
+  (interactive (list (perject-tab-index 'current) nil
 					 (memq 'cycle-state perject-tab-messages)))
   (let* ((proj (or proj (perject-assert-project)))
 		 (tab (progn (perject-tab-assert-index num proj) (nth (1- num) (perject-tab-tabs proj))))
@@ -356,10 +369,9 @@ configuration.
 If MSG is non-nil, also print a message. In interactive use, this is determined
 by the value of `perject-tab-messages'."
   (interactive
-   (list (perject-tab-index 'current) nil (perject-current) (memq 'set perject-tab-messages)))
+   (list (perject-tab-index 'current) nil nil (memq 'set perject-tab-messages)))
   (let* ((proj (or proj
 				   (perject-assert-project (and (framep tab-or-frame) tab-or-frame))))
-		 ;; If a new tab is created, ensure that the mutability stays the same.
 		 (tab (progn (perject-tab-assert-index num proj)
 					 (if (or (framep tab-or-frame) (null tab-or-frame))
 						 (perject-tab-make (perject-tab-state num proj) tab-or-frame)
@@ -368,8 +380,8 @@ by the value of `perject-tab-messages'."
 	(when msg
 	  (if (and (eq (perject-tab-index 'current) num)
 			   (equal proj (perject-current)))
-		  (message "Updated current tab"))
-	  (message "Updated tab %s of project '%s'" num (perject-project-to-string proj)))))
+		  (message "Updated current tab")
+		(message "Updated tab %s of project '%s'" num (perject-project-to-string proj))))))
 
 (defun perject-tab-increment-index (&optional msg)
   "Increase the index of the current tab by one.
@@ -592,17 +604,20 @@ It may also be nil, in which case the current project of the selected frame is
 used."
   (alist-get 'perject-state (nth (1- num) (perject-tab-tabs proj))))
 
-(defun perject-tab-update-p (num &optional proj)
+(defun perject-tab-update-p (num &optional proj frame)
   "Return non-nil if the tab of project PROJ at index NUM should be updated.
 This is determined by its state (see `perject-tab-states').
-PROJ is a dotted pair with car a collection and cdr a project name.
-It may also be nil, in which case the current project of the selected frame is
-used."
-  (let* ((tab (nth (1- num) (perject-tab-tabs proj)))
+FRAME is a frame or nil, in which case the selected frame is used and PROJ is a
+dotted pair with car a collection and cdr a project name. If PROJ is nil, use
+the current project of FRAME."
+  (let* ((proj (or proj (perject-current frame)))
+		 (tab (nth (1- num) (perject-tab-tabs proj)))
 		 (fun (car (alist-get (alist-get 'perject-state tab) perject-tab-states nil nil #'string-equal))))
 	;; If the state is invalid, use the default state.
-	(funcall (if (functionp fun) fun (cadar perject-tab-states))
-			 (or proj (perject-current)) tab)))
+	(if frame
+		(with-selected-frame frame
+		  (funcall (if (functionp fun) fun (cadar perject-tab-states)) proj tab))
+	  (funcall (if (functionp fun) fun (cadar perject-tab-states)) proj tab))))
 
 (defun perject-tab-make (&optional state frame)
   "Create a new tab corresponding to the current window configuration in frame FRAME.
@@ -610,9 +625,16 @@ The tab will have the state STATE. STATE may be a string or nil. If it is nil,
 use the default state (the car of `perject-tab-states'). If FRAME is nil, it
 defaults to the selected frame."
   (let ((tab-bar-tab-name-function perject-tab-name-function)
-		(tab-bar-tab-name-truncated-max perject-tab-name-truncated-max))
-	(append (tab-bar--tab frame)
-			(list (cons 'perject-state (or state (caar perject-tab-states)))))))
+		(tab-bar-tab-name-truncated-max perject-tab-name-truncated-max)
+		(extra-data
+		 (cons (cons 'perject-state (or state (caar perject-tab-states)))
+			   (if frame
+				   (with-selected-frame frame
+					 (mapcar (lambda (data) (cons (car data) (funcall (cdr data))))
+							 perject-tab-extra-data))
+				 (mapcar (lambda (data) (cons (car data) (funcall (cdr data))))
+						 perject-tab-extra-data)))))
+	(append (tab-bar--tab frame) extra-data)))
 
 (defun perject-tab-collection-tabs (name)
   "Return the list of all tabs belonging to some project within the collection named NAME."
@@ -678,12 +700,15 @@ LENGTH is the total number of indices. If it is 0, return nil."
   "Return a list of tabs belonging to FRAME taking the current project into account."
   (perject-tab-tabs (perject-current frame)))
 
+(defun perject-tab-get-visible-buffers ()
+  "Return all visible buffers in the selected frame."
+  (mapcar #'window-buffer (window-list nil 0)))
+
 (defun perject-tab--dynamic-state (_ tab)
-  "Return non-nil if the the window configuration of tab and the current one have the same window layout.
-This function ignores details such as the values of point and scrolling
-positions."
-  (let ((wc (alist-get 'wc tab)))
-	(or (not (window-configuration-p wc)) (window-configuration-equal-p wc (current-window-configuration)))))
+  "Return non-nil if the same buffers are visible in the tab TAB and in the current window configuration.
+This function ignores the window positions and whether the same buffer is displayed multiple times."
+  (let ((buffers (alist-get 'buffers tab)))
+	(or (not buffers) (seq-set-equal-p buffers (perject-tab-get-visible-buffers)))))
 
 
 ;;;; Hook Functions for Perject
@@ -696,7 +721,19 @@ positions."
 	(setq perject-tab--tabs
 		  (append perject-tab--tabs-current
 				  (cl-remove-if (lambda (pair) (member (car pair) projects))
-								perject-tab--tabs)))))
+								perject-tab--tabs)))
+	;; After loading the tabs from the desktop file, some data (like the window
+	;; configuration wc) is missing. We thus regenerate the tabs "on demand"
+	;; (i.e. after having switched to it) in `perject-tab-switch' (which see),
+	;; so we need to do it manually for the "starting indices" (i.e. the current
+	;; ones).
+	(dolist (proj projects)
+	  (when (perject-tab-tabs proj)
+		(dolist (frame (perject-get-frames proj))
+		  (if-let ((current (perject-tab-index 'current proj frame)))
+			  (perject-tab-set current frame proj)
+			(warn "Frame belonging to project '%s' has no current index"
+				  (perject-project-to-string proj))))))))
 
 (defun perject-tab--save (list)
   "Prepare for perject to save the tabs of the projects given by LIST."
@@ -713,7 +750,8 @@ positions."
 					  (seq-reduce
 					   (lambda (current param)
 						 (assq-delete-all param current))
-					   '(wc wc-point wc-bl wc-bbl wc-history-back wc-history-forward)
+					   (append '(wc wc-point wc-bl wc-bbl wc-history-back wc-history-forward)
+							   (mapcar #'car perject-tab-extra-data))
 					   tab))
 					(cdr pair))))
 		   alist)))
@@ -755,7 +793,7 @@ positions."
   ;; If the current tab of the old project is mutable, update it.
   (when-let ((index (and (consp old-proj)
 						 (perject-tab-index 'current old-proj frame)))
-			 ((perject-tab-update-p index old-proj)))
+			 ((perject-tab-update-p index old-proj frame)))
 	(perject-tab-set index frame old-proj))
   (when (and (consp proj) (perject-tab-tabs proj))
 	(with-selected-frame frame

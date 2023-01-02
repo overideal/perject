@@ -437,7 +437,7 @@ by the value of `perject-tab-messages'."
 ;;;;; Switching Tabs
 
 (defun perject-tab-switch (num &optional force-update msg)
-  "Switch to the tab with index NUM (starting at one) of the current project in the selected frame.
+  "Switch to the tab with index NUM (starting from one) of the current project in the selected frame.
 If the state of the old tab (the one before switching) allows it (see
 `perject-tab-states'), also update its value to the current window
 configuration.
@@ -453,6 +453,7 @@ After switching tabs, this function runs the hook
 		 (memq 'switch perject-tab-messages)))
   (let ((proj (perject-assert-project))
 		(old-index (perject-tab-index 'current)))
+	(unless num (user-error "Use a prefix argument to specify an index to switch to"))
 	(perject-tab-assert-index num proj)
 	;; If the current tab is mutable and FORCE-UPDATE allows it, update the tab.
 	(when (or (eq force-update t)
@@ -463,14 +464,16 @@ After switching tabs, this function runs the hook
 		  (current (nth (1- num) (perject-tab-tabs)))
 		  ;; Silence `tab-bar-select-tab'.
 		  (tab-bar-mode t))
-	  (tab-bar-select-tab num)
-	  ;; `tab-bar' replaces the new tab by a pseudo tab indicating that it is current,
-	  ;; but not saving the information we need (e.g. for other frames holding the same project).
-	  ;; Thus we change the offending value back.
-      (setf (nth (1- num) (perject-tab-tabs)) current)
-	  ;; After restoring a tab from the desktop, many entries of the tab (e.g. the
-	  ;; window configuration wc) are nil. In that case, we refresh the tab after
-	  ;; switching to it, creating the data.
+	  ;; At the end of `tab-bar-select-tab' the new tab is replaced by a pseudo
+	  ;; tab indicating that it is current, but not saving the information we
+	  ;; need (e.g. when another frame wants to display that same tab).
+	  ;; This can either be solved by manually switching the offending value
+	  ;; back or by locally overwriting a function. We use the second approach.
+	  (cl-letf (((symbol-function 'tab-bar--current-tab-make) (cl-constantly current)))
+		(tab-bar-select-tab num))
+	  ;; After restoring a tab from the desktop, many entries of the tab (e.g.
+	  ;; the window configuration wc) are nil. In that case, we refresh the tab
+	  ;; after switching to it, creating the data.
 	  (unless (window-configuration-p (alist-get 'wc current))
 		(perject-tab-set num)))
 	;; If the new index is the same as the old one, do not update recent.
@@ -563,7 +566,7 @@ It may also be nil, in which case it defaults to the current project."
 	(when (and (numberp index) (> length 0))
 	  (if (> index length)
 		  (progn
-			(message "Warning: Index too large")
+			(warn "Index too large")
 			(setf index length))
 		index))))
 

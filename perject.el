@@ -155,6 +155,35 @@ those buffers."
 		  (const :tag "Never save the collection" nil)
 		  (function :tag "Custom function")))
 
+(defcustom perject-save-frames '(t)
+  "Whether to save the frames of a collection.
+The value of the variable must be a list, which is of the following form:
+(default (name . value) ...)
+
+The first element serves as the default value. If it is nil, the frames
+belonging to the collections are not saved to their desktop files. If it is
+'ask, the user is asked whether the frames should be saved for every collection.
+Otherwise, the frames of every collection are saved.
+The remaining elements of the list define exceptions to this rule. Each of the
+entries is a dotted pair with car the collection name and cdr one of the
+possible values of the default value. The cdr overwrites the behavior of the
+default for the collection specified by the car.
+
+The variable `perject-frames-predicate' can be used to further filter which
+frames of which collection are saved."
+  :type '(cons
+		  (choice
+		   (const :tag "By default save the frames" t)
+		   (const :tag "By default ask the user whether the frames should be saved" ask)
+		   (const :tag "By default do not save the frames" nil))
+		  (repeat
+		   (cons
+			string
+			(choice
+			 (const :tag "Save the frames for this collection" t)
+			 (const :tag "Ask the user whether the frames should be saved for this collection" ask)
+			 (const :tag "Do not save the frames for this collection" nil))))))
+
 (defcustom perject-kill-frames-on-close t
   "When non-nil, delete the frames belonging to a collection that has just been closed.
 Otherwise, keep the frames but remove the collection from them.
@@ -184,7 +213,9 @@ with the remaining frames in a custom way."
 It may have one of the following values:
 - nil: Remove the project and collection from the frames.
 - 'keep: Remove the project from the frames, but keep the collection.
-- t: Delete the frames, unless all frames belong to that project."
+- t: Delete the frames, unless all frames belong to that project.
+Set this variable to nil and use the hook `perject-after-delete-project-hook' to
+deal with the remaining frames in a custom way."
   :type '(set
 		  (const :tag "Remove the project and collection from the frames" nil)
 		  (const :tag "Remove the project from the frames, but keep the collection" keep)
@@ -381,9 +412,10 @@ For convenience, the buffer list can be further filtered using the variables
 
 (defcustom perject-frames-predicate nil
   "Function identifying frames that are not saved to the desktop file of a collection.
-By default, when saving a collection, all frames belonging to the collection
-are saved. This variable can be used to only save a subset of those frames. If
-this variable is nil, no additional filtering takes place.
+Depending on the value of `perject-save-frames', when saving a collection,
+either all frames belonging to the collection are saved or no frames are saved.
+This variable can be used to only save a subset of those frames. If this
+variable is nil, no additional filtering takes place.
 The function is called with the collection name and a frame and it must return
 nil if the frame should not be saved."
   :type '(choice function (const nil)))
@@ -1247,8 +1279,9 @@ the optional argument NO-MSG is non-nil, don't print any messages."
    (list
     (if (or current-prefix-arg
             (not (perject-current)))
-        (perject--get-project "Save collection: " 'active nil t (car (perject-current))
-								   "No collection to save" "No collection specified")
+        (perject--get-collection-name
+		 "Save collection: " 'active nil t (car (perject-current))
+		 "No collection to save" "No collection specified")
       (car (perject-current)))))
   (perject-desktop-save name release-lock no-msg))
 
@@ -2199,23 +2232,31 @@ don't print any messages."
 							 name file-name buffer-name major-mode minor-modes)))
 		   (lambda (_ buffer-name _ _)
 			 (perject-is-assoc-with (get-buffer buffer-name) name))))
+		(save-frames (let* ((exception (assoc name (cdr perject-save-frames)))
+							(value (if exception (cdr exception) (car perject-save-frames))))
+					   (if (eq value 'ask)
+						   (y-or-n-p (format "Save frames of collection '%s'?" name))
+						 value)))
+		;; Preserve the original function definition of `desktop-outvar',
+		;; which is overwritten locally.
+		(outvar (symbol-function 'desktop-outvar))
 		;; Hack: Pretend the desktop file is from the same time, so that desktop does not
 		;; complain that the desktop file is more recent than the one loaded.
 		(desktop-file-modtime (file-attribute-modification-time
 							   (file-attributes
 								(desktop-full-file-name
-								 (file-name-as-directory (perject-get-collection-dir name))))))
-		;; Preserve the original function definition of `desktop-outvar',
-		;; which is overwritten locally.
-		(outvar (symbol-function 'desktop-outvar)))
+								 (file-name-as-directory
+								  (perject-get-collection-dir name)))))))
 	;; Overwrite `desktop-outvar' so `desktop-save' deals with our more
 	;; complex version of `desktop-globals-to-save' correctly.
 	(cl-letf (((symbol-function 'desktop--check-dont-save)
-			   (if (functionp perject-frames-predicate)
-				   (lambda (frame)
+			   (cond
+				((not save-frames) #'ignore)
+				((functionp perject-frames-predicate)
+				 (lambda (frame)
 					 (and (perject-is-assoc-with frame name)
-						  (funcall perject-frames-predicate name frame)))
-				 (apply-partially (-flip #'perject-is-assoc-with) name)))
+						  (funcall perject-frames-predicate name frame))))
+				(t (apply-partially (-flip #'perject-is-assoc-with) name))))
 			  ((symbol-function 'desktop-outvar)
 			   (lambda (triple)
 				 (if (listp triple)

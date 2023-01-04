@@ -56,6 +56,11 @@ The first one displays the project and collection name (and tabs if /perject-tab
 It is displayed automatically whenever /perject-mode/ is enabled (and the current frame belongs to a collection or project).
 Perject also defines the mode line construct *perject-mode-line-current*.
 TODO
+* desktop.el
+| desktop.el              | perject.el                      |
+|-------------------------+---------------------------------|
+| desktop-after-read-hook | perject-desktop-after-load-hook |
+| desktop-save-hook       | perject-desktop-save-hook       |
 * TODO Talk about perject-consult and perject-ibuffer; Find a good place for perject-ivy
 * Testing functions (working)
 - perject-delete-project

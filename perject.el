@@ -330,16 +330,62 @@ is loaded. If this variable is nil, that frame is not altered."
 		  (const :tag "Reuse starting frame" t)
 		  (const :tag "Don't reuse starting frame" nil)))
 
-(defcustom perject-buffers-not-to-save-function nil
-  "Function identifying buffers that are to be excluded when saving a collection to its desktop file.
-Buffers not belonging to the current collection are never saved.
-If this variable is nil, no additional filtering takes place.
-The function is called with five arguments: the dotted pair consisting of the
-current collection name as a car and the current project name as a cdr (the
-latter one could be nil), the name of the visited file, the buffer name, the
-major mode and the list of active minor modes. It should return nil if the
-buffer should not have its state saved in the desktop file.
-This variable corresponds to `desktop-buffers-not-to-save-function'."
+(defcustom perject-global-vars-to-save nil
+  "A list of global variables saved and restored by perject for every collection.
+Every entry of the list may either be a global variable or a list with three
+elements. In the first case, when a collection is loaded from its desktop file,
+the global variable is set to the value specified in that desktop file. As such,
+the value of the variable is overwritten. This means that the value is
+determined by the last collection loaded.
+
+An entry may alternatively be a a list with three elements:
+(var serializer deserializer).
+
+The first entry is the variable to be saved. The second entry is a function
+(\"serializer\") that is called when a collection is saved to its desktop file.
+The serializer is supplied with the current value of the variable and the name
+of the collection being saved. Its return value is saved to the desktop file.
+The deserializer is called when a collection is loaded from its desktop file.
+Given the value from the desktop file and the name of the collection being
+loaded, its return value serves as the new value of the variable.
+
+The deserializer should take into account the fact that the variable might
+already have a value (e.g. if another collection was already loaded before the
+current one)."
+  :type '(repeat
+		  (choice (list variable function function)
+				  variable)))
+
+(defcustom perject-local-vars-to-save
+  (cons '(mark-ring perject--serialize-mark-ring perject--deserialize-mark-ring)
+		desktop-locals-to-save)
+  "A list of global variables saved and restored by perject for every collection.
+The entries of the list are of the same form as those in
+`perject-global-vars-to-save', which see."
+  :type '(repeat
+		  (choice (list variable function function)
+				  variable)))
+
+(defcustom perject-buffers-predicate nil
+  "Function identifying buffers that are not saved to the desktop file of a collection.
+By default, when saving a collection, all buffers belonging to the collection
+are saved. This variable can be used to only save a subset of those buffers. If
+this variable is nil, no additional filtering takes place.
+The function is called with five arguments: the collection name, the name of the
+visited file, the buffer name, the major mode and the list of active minor
+modes. It must return nil if the buffer should not be saved.
+For convenience, the buffer list can be further filtered using the variables
+`desktop-buffers-not-to-save', `desktop-files-not-to-save' and
+`desktop-modes-not-to-save'."
+  :type '(choice function (const nil)))
+
+(defcustom perject-frames-predicate nil
+  "Function identifying frames that are not saved to the desktop file of a collection.
+By default, when saving a collection, all frames belonging to the collection
+are saved. This variable can be used to only save a subset of those frames. If
+this variable is nil, no additional filtering takes place.
+The function is called with the collection name and a frame and it must return
+nil if the frame should not be saved."
   :type '(choice function (const nil)))
 
 (defcustom perject-auto-add-function nil
@@ -530,16 +576,14 @@ project and that have not been killed."
 
 (defcustom perject-desktop-after-load-hook nil
   "Hook run after perject has loaded a collection from its desktop file.
-The functions are called with one argument, namely a list with car the
-collection name and remaining elements the corresponding projects.
-This hook corresponds to `desktop-after-read-hook'."
+The functions are called with the name of the collection as their only
+argument."
   :type 'hook)
 
 (defcustom perject-desktop-save-hook nil
   "Hook run before perject has saved a collection to its desktop file.
-The functions are called with one argument, namely a list with car the
-collection name and remaining elements the corresponding projects.
-This hook corresponds to `desktop-save-hook'."
+The functions are called with the name of the collection as their only
+argument."
   :type 'hook)
 
 
@@ -592,13 +636,7 @@ remaining entries are the corresponding project names.")
 
 ;; I am surprised such a variable does not already exist in `frameset.el'
 (defvar perject--desktop-restored-frames nil
-  "The list of the frames which were restored for the most recent project.
-Should not be modified by the user.")
-
-(defvar perject--desktop-current nil
-  "Internal variable that is set to the current collection while saving or loading a project.
-More precisely, it is a list with car the collection name and remaining values
-its corresponding projects.
+  "The list of the frames which were restored for the most recent collection.
 Should not be modified by the user.")
 
 (defvar perject--desktop-reuse-frames nil
@@ -1144,7 +1182,7 @@ This function runs the hooks `perject-before-close-hook' and
 (defun perject-reload-collection (name &optional kill-frames kill-buffers)
   "Reload the collection named NAME from its desktop file.
 This discards any changes to the collection and reverts it to the state from the
-previous save. This is achived by closing and reopening the collection.
+previous save. This is achieved by closing and reopening the collection.
 Frames belonging to the collection are reused.
 The optional argument KILL-FRAMES determines how to deal with the frames that
 belonged to the collection but have not been reused. Its value is interpreted
@@ -2073,6 +2111,14 @@ collection and cdr a project name."
 				 (if (eq (length frames) 1) "was" "were"))
 	   (format "Kill %s belonging to %s?" frame name)))))
 
+(defun perject--serialize-mark-ring (value _)
+  "Serialize the mark ring."
+  (mapcar #'marker-position value))
+
+(defun perject--deserialize-mark-ring (value _)
+  "Deserialize the mark ring."
+  (mapcar #'copy-marker value))
+
 
 ;;;; Interface to desktop.el
 
@@ -2085,7 +2131,9 @@ This function also adds NAME to the alist of active collections `perject-collect
 				nil
 				(lambda (projects)
 				  (append perject-buffer projects)))
-		  desktop-var-serdes-funs))
+		  (mapcar (lambda (triple)
+					(list (car triple) (cadr triple) (apply-partially (-flip (caddr triple)) name)))
+				  (cl-remove-if-not #'listp perject-local-vars-to-save))))
 		(desktop-load-locked-desktop t)
 		;; `desktop-read' prints information about the loaded desktop file,
 		;; which we want to print ourselves. However, all other messages (e.g.
@@ -2097,14 +2145,15 @@ This function also adds NAME to the alist of active collections `perject-collect
 		;; `desktop-after-read-hook'.
 		(inhibit-message inhibit-message)
 		(message-log-max message-log-max)
-		(desktop-after-read-hook (append desktop-after-read-hook (list #'perject-desktop-print-info))))
+		(desktop-after-read-hook
+		 (append desktop-after-read-hook
+				 (list (apply-partially #'perject-desktop-print-info name)))))
 	;; Unlike `desktop-save', `desktop-load' seems to have a weird
 	;; implementation, so we need the following line since otherwise desktop
 	;; thinks that it is loading the already loaded desktop again and refuses to
 	;; do so.
 	(setq desktop-dirname (file-name-as-directory (perject-get-collection-dir name)))
-	(desktop-read desktop-dirname)
-	(push perject--desktop-current perject-collections))
+	(desktop-read desktop-dirname))
   ;; Change the frame title of the newly restored frames, if desired.
   ;; The 'name' frame parameter in `frameset-filter-alist' is not restored by default.
   ;; While we could change that setting, this would also influence other times when the user
@@ -2113,36 +2162,40 @@ This function also adds NAME to the alist of active collections `perject-collect
 	(dolist (frame perject--desktop-restored-frames)
 	  (set-frame-parameter frame 'name
 						   (funcall perject-frame-title-format (perject-current frame)))))
-  (run-hook-with-args 'perject-desktop-after-load-hook perject--desktop-current))
+  (run-hook-with-args 'perject-desktop-after-load-hook name))
 
 (defun perject-desktop-save (name &optional release-lock no-msg)
   "Using `desktop-save' save the collection named NAME to the corresponding desktop file.
 If the optional argument RELEASE-LOCK is non-nil, Emacs will release the lock of
 the corresponding desktop file. If the optional argument NO-MSG is non-nil,
 don't print any messages."
-  (unless name
-	(error "Cannot save an unnamed collection with `perject-desktop-save'"))
-  (let ((perject--desktop-current (assoc name perject-collections))
-		(desktop-globals-to-save
-		 (cons 'perject--desktop-current desktop-globals-to-save))
+  (unless (perject-collection-p name 'active)
+	(error "Collection '%s' does not exist" name))
+  (run-hook-with-args 'perject-desktop-save-hook name)
+  (let ((desktop-globals-to-save
+		 ;; Save the current collection and its projects. This must be saved
+		 ;; first, so that when loading the desktop file the collection and its
+		 ;; projects are set when the other variables are loaded.
+		 (cons
+		  (list 'perject-collections (-flip #'assoc) nil)
+		  perject-global-vars-to-save))
 		(desktop-var-serdes-funs
 		 (cons
 		  (list 'perject-buffer
 				(lambda (projects)
 				  (cl-remove-if-not (-compose (apply-partially #'string-equal name) #'car) projects))
 				nil)
-		  desktop-var-serdes-funs))
-		;; Frames that do not belong to the project named NAME should not be
-		;; saved, so we put them into a list and save the other frames.
-		(ignored-frames
-		 (cl-remove-if (apply-partially (-flip #'perject-is-assoc-with) name) (frame-list)))
+		  (mapcar (lambda (triple)
+					(list (car triple) (apply-partially (-flip (cadr triple)) name) (caddr triple)))
+				  (cl-remove-if-not #'listp perject-local-vars-to-save))))
+		(desktop-locals-to-save (cl-remove-if #'listp perject-local-vars-to-save))
 		;; Only save those buffers belonging to the current project and respect
-		;; the value of `perject-buffers-not-to-save-function'.
+		;; the value of `perject-buffers-predicate'.
 		(desktop-buffers-not-to-save-function
-		 (if perject-buffers-not-to-save-function
+		 (if perject-buffers-predicate
 			 (lambda (file-name buffer-name major-mode minor-modes)
 			   (and (perject-is-assoc-with (get-buffer buffer-name) name)
-					(funcall perject-buffers-not-to-save-function
+					(funcall perject-buffers-predicate
 							 name file-name buffer-name major-mode minor-modes)))
 		   (lambda (_ buffer-name _ _)
 			 (perject-is-assoc-with (get-buffer buffer-name) name))))
@@ -2151,29 +2204,45 @@ don't print any messages."
 		(desktop-file-modtime (file-attribute-modification-time
 							   (file-attributes
 								(desktop-full-file-name
-								 (file-name-as-directory (perject-get-collection-dir name)))))))
-	(run-hook-with-args 'perject-desktop-save-hook perject--desktop-current)
-	(dolist (frame ignored-frames)
-	  (set-frame-parameter frame 'desktop-dont-save t))
-	(desktop-save (file-name-as-directory
-				   (perject-get-collection-dir name))
-				  release-lock)
-	(dolist (frame ignored-frames)
-	  (set-frame-parameter frame 'desktop-dont-save nil))
-	(unless no-msg
-	  (message "Perject: Saved collection %s" name))))
+								 (file-name-as-directory (perject-get-collection-dir name))))))
+		;; Preserve the original function definition of `desktop-outvar',
+		;; which is overwritten locally.
+		(outvar (symbol-function 'desktop-outvar)))
+	;; Overwrite `desktop-outvar' so `desktop-save' deals with our more
+	;; complex version of `desktop-globals-to-save' correctly.
+	(cl-letf (((symbol-function 'desktop--check-dont-save)
+			   (if (functionp perject-frames-predicate)
+				   (lambda (frame)
+					 (and (perject-is-assoc-with frame name)
+						  (funcall perject-frames-predicate name frame)))
+				 (apply-partially (-flip #'perject-is-assoc-with) name)))
+			  ((symbol-function 'desktop-outvar)
+			   (lambda (triple)
+				 (if (listp triple)
+					 (insert "(perject-desktop-load-global-variable '"
+							 (symbol-name (car triple))
+							 " "
+							 (desktop-value-to-string
+							  (funcall (cadr triple) (symbol-value (car triple)) name))
+							 " \""
+							 name
+							 "\")\n")
+				   (funcall outvar triple)))))
+	  (desktop-save (file-name-as-directory
+					 (perject-get-collection-dir name))
+					release-lock)))
+  (unless no-msg (message "Perject: Saved collection %s" name)))
 
-(defun perject-desktop-print-info ()
-  "Print information about the collection that was just restored.
+(defun perject-desktop-print-info (name)
+  "Print information about the collection named NAME that was just restored.
 This also sets `inhibit-message' and `message-log-max' (which were locally bound
 when this function is called).
 Never call this function manually."
   ;; Code adapted from `desktop-read'.
   ;; We access the variables from `desktop-read'.
-  (let* ((col (car perject--desktop-current))
-		(projects (cdr perject--desktop-current)))
+  (let ((projects (mapcar #'cdr (perject-get-projects name))))
 	(message "Perject: collection '%s'%s: %s%s%d buffer%s restored%s%s."
-			 col
+			 name
 			 (if projects
 				 (concat " (" (string-join projects ", ") ")") "")
 			 (if desktop-saved-frameset
@@ -2182,9 +2251,7 @@ Never call this function manually."
 						   fn (if (= fn 1) "" "s")))
 			   "")
 			 (if (featurep 'perject-tab)
-				 ;; We cannot use `perject-tab-collection-tabs' since the
-				 ;; corresponding variable is set later.
-				 (let ((fn (length (seq-mapcat #'cdr perject-tab--tabs-current))))
+				 (let ((fn (length (perject-tab-collection-tabs name))))
 				   (format "%d tab%s, " fn (if (= fn 1) "" "s")))
 			   "")
 			 desktop-buffer-ok-count
@@ -2197,6 +2264,19 @@ Never call this function manually."
 						 (length desktop-buffer-args-list))
 			   "")))
   (setq inhibit-message t message-log-max nil))
+
+(defun perject-desktop-load-global-variable (sym value name)
+  "Set the global variable SYM to VALUE for the collection named NAME.
+This is achieved using the deserializer as specified in
+`perject-global-vars-to-save'."
+  (if (eq sym 'perject-collections)
+	  ;; If the variable is `perject-collections', add the new collection and its projects to it.
+	  (push value perject-collections)
+	(let ((deserializer (cadr (alist-get sym perject-global-vars-to-save))))
+	  (if (functionp deserializer)
+		  (set sym (funcall deserializer value name))
+		(warn "No deserializer found for symbol '%s' in desktop file of collection
+		  '%s'. Check `perject-global-vars-to-save'" sym name)))))
 
 (defun perject-desktop-restore-frameset-advice ()
   "Like `desktop-restore-frameset', but allow for more parameters from `frameset-restore'.

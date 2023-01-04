@@ -220,12 +220,6 @@ the project and the index being toggled."
 (defvar perject-tab--tabs nil
   "Alist saving the list of tabs (cdr) for each project (car).")
 
-(defvar perject-tab--tabs-current nil
-  "Internal variable used to save and restore the tabs.
-It is a list with each entry being a list with car a project and remaining
-values the tabs of that project.
-Should not be modified by the user.")
-
 
 ;;;; The Mode
 
@@ -245,20 +239,18 @@ Should not be modified by the user.")
 							(perject-current) (perject-tab-tabs)
 							(perject-tab-index 'current) (perject-tab-index 'recent))))
                 (cdr (last mode-line-misc-info))))
-		(add-to-list 'desktop-globals-to-save 'perject-tab--tabs-current)
-		(add-hook 'perject-desktop-after-load-hook #'perject-tab--load)
-		(add-hook 'perject-desktop-save-hook #'perject-tab--save)
+		(add-to-list 'perject-global-vars-to-save
+					 '(perject-tab--tabs perject-tab--serialize-tabs perject-tab--deserialize-tabs))
+		(add-hook 'perject-desktop-after-load-hook #'perject-tab--regenerate)
 		(add-hook 'perject-rename-hook #'perject-tab--rename)
 		;; This hook also covers the case that an active collection is deleted.
 		(add-hook 'perject-after-close-hook #'perject-tab--close-or-delete)
 		(add-hook 'perject-after-delete-project-hook #'perject-tab--close-or-delete)
-		(add-hook 'perject-after-switch-hook #'perject-tab--switch)
-		)
+		(add-hook 'perject-after-switch-hook #'perject-tab--switch))
 
 	;; Remove the added hooks etc.
-	(setq desktop-globals-to-save (delete 'perject-tab--tabs-current desktop-globals-to-save))
-	(remove-hook 'perject-desktop-after-load-hook #'perject-tab--load)
-	(remove-hook 'perject-desktop-save-hook #'perject-tab--save)
+	(setq perject-global-vars-to-save (delete '(perject-tab--tabs perject-tab--serialize-tabs perject-tab--deserialize-tabs) perject-global-vars-to-save))
+	(remove-hook 'perject-desktop-after-load-hook #'perject-tab--regenerate)
 	(remove-hook 'perject-rename-hook #'perject-tab--rename)
 	(remove-hook 'perject-after-close-hook #'perject-tab--close-or-delete)
 	(remove-hook 'perject-after-delete-project-hook #'perject-tab--close-or-delete)
@@ -713,33 +705,32 @@ This function ignores the window positions and whether the same buffer is displa
 
 ;;;; Hook Functions for Perject
 
-(defun perject-tab--load (list)
-  "Load the tabs of the projects belonging to the projects given by LIST."
-  (let ((projects (mapcar (apply-partially #'cons (car list)) (cdr list))))
-	;; If there already are any tabs belonging to those projects (which should
-	;; never happen) replace them.
-	(setq perject-tab--tabs
-		  (append perject-tab--tabs-current
-				  (cl-remove-if (lambda (pair) (member (car pair) projects))
-								perject-tab--tabs)))
-	;; After loading the tabs from the desktop file, some data (like the window
-	;; configuration wc) is missing. We thus regenerate the tabs "on demand"
-	;; (i.e. after having switched to it) in `perject-tab-switch' (which see),
-	;; so we need to do it manually for the "starting indices" (i.e. the current
-	;; ones).
-	(dolist (proj projects)
-	  (when (perject-tab-tabs proj)
-		(dolist (frame (perject-get-frames proj))
-		  (if-let ((current (perject-tab-index 'current proj frame)))
-			  (perject-tab-set current frame proj)
-			(warn "Frame belonging to project '%s' has no current index"
-				  (perject-project-to-string proj))))))))
+;; After loading the tabs from the desktop file, some data (like the window
+;; configuration wc) is missing. We thus regenerate the tabs "on demand" (i.e.
+;; after having switched to it) in `perject-tab-switch' (which see), so we need
+;; to do it manually for the "starting indices" (i.e. the current ones).
+(defun perject-tab--regenerate (name)
+  "Regenerate the current tabs of all frames."
+  (dolist (proj (perject-get-projects name))
+	(when (perject-tab-tabs proj)
+	  (dolist (frame (perject-get-frames proj))
+		(if-let ((current (perject-tab-index 'current proj frame)))
+			(perject-tab-set current frame proj)
+		  (warn "Frame belonging to project '%s' has no current index"
+				(perject-project-to-string proj)))))))
 
-(defun perject-tab--save (list)
-  "Prepare for perject to save the tabs of the projects given by LIST."
-  ;; Projects are calculated by the same mechanism as in `perject-get-projects'.
-  (let* ((projects (mapcar (apply-partially #'cons (car list)) (cdr list)))
-		 (alist (cl-remove-if-not (lambda (pair) (member (car pair) projects)) perject-tab--tabs))
+(defun perject-tab--deserialize-tabs (tabs name)
+  "Add the tabs TABS of the collection named NAME to `perject-tab--tabs' and return the result."
+  ;; If there already are any tabs belonging to those projects (which should
+  ;; never happen) replace them.
+  (let ((projects (perject-get-projects name)))
+	(append tabs
+			(cl-remove-if (lambda (pair) (member (car pair) projects)) perject-tab--tabs))))
+
+(defun perject-tab--serialize-tabs (tabs name)
+  "Filter the list of tabs TABS for those belonging to the collection named NAME and return the result."
+  (let* ((projects (perject-get-projects name))
+		 (alist (cl-remove-if-not (lambda (pair) (member (car pair) projects)) tabs))
 		 ;; Filter the remaining tabs like `frameset-filter-tabs' does.
 		 (filtered-alist
 		  (mapcar
@@ -755,7 +746,7 @@ This function ignores the window positions and whether the same buffer is displa
 					   tab))
 					(cdr pair))))
 		   alist)))
-	(setq perject-tab--tabs-current filtered-alist)))
+    filtered-alist))
 
 (defun perject-tab--rename (proj new-proj)
   "React to perject renaming a collection or project from PROJ to NEW-PROJ."

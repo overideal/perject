@@ -265,11 +265,12 @@ This variable may have one of the following values:
 		  `perject-open-collection' and at startup" t)))
 
 (defcustom perject-messages
-  '(add-buffer remove-buffer next-collection previous-collection next-project previous-project)
+  '(save add-buffer remove-buffer next-collection previous-collection next-project previous-project)
   "Whether to print informative messages when performing certain actions.
 The value of this variable is a list which may contain any of the following
 symbols, whose presence in the list leads to a message being printed in the
 indicated command:
+- 'save: `perject-save-collection'
 - 'add-buffer: `perject-add-buffer-to-project',
 - 'remove-buffer: `perject-remove-buffer-from-project',
 - 'switch: `perject-switch',
@@ -278,6 +279,7 @@ indicated command:
 - 'next-project: `perject-next-project',
 - 'previous-project: `perject-previous-project'."
   :type '(set
+		  (const :tag "`perject-save-collection'" save)
 		  (const :tag "`perject-add-buffer-to-project'" add-buffer)
 		  (const :tag "`perject-remove-buffer-from-project'" remove-buffer)
 		  (const :tag "`perject-switch'" switch)
@@ -826,11 +828,23 @@ selected and focused is determined by `perject-raise-and-focus-frame'."
 The variabe `perject-save-on-exit' determines which collections are saved.
 This function is called by `perject-mode' before exiting Emacs (using
 `kill-emacs-hook')."
-  (perject-save-collections 'exit t t)
-  ;; Reverse the list of active collections, so that when restoring the
-  ;; collections in the next section the order of the resulting list is the same
-  ;; as before.
-  (setq perject--previous-collections (nreverse (perject-get-collections 'active))))
+  (let* ((cols (perject-get-collections 'active))
+		 (cols-to-save
+		  (pcase perject-save-on-exit
+			('all cols)
+			((pred listp) (if (eq (car perject-save-on-exit) 'not)
+							  (cl-set-difference cols (cdr perject-save-on-exit)
+												 :test #'string-equal)
+							perject-save-on-exit))
+			('recent perject--previous-collections)
+			((pred functionp) (funcall perject-save-on-exit
+									   perject--previous-collections
+									   cols)))))
+	(perject-save-collection cols-to-save t (memq 'save perject-messages))
+	;; Reverse the list of active collections, so that when restoring the
+	;; collections in the next section the order of the resulting list is the same
+	;; as before.
+	(setq perject--previous-collections (nreverse cols))))
 
 
 ;;;; Creating, Renaming and Deleting
@@ -1267,62 +1281,33 @@ This function runs the hooks `perject-before-reload-hook' and
 	  (setq frames (cl-remove-if-not #'frame-live-p frames))
 	  (run-hook-with-args 'perject-after-reload-hook name frames buffers))))
 
-(defun perject-save-collection (name &optional release-lock no-msg)
+(defun perject-save-collection (name &optional release-lock msg)
   "Save the collection named NAME.
-In interactive use, if a prefix argument is supplied or the current frame is not
-associated with any collection, ask the user for NAME, presenting the currently
-active collections as candidates. Otherwise, use the current collection.
+NAME may also be a list of collections, in which case every collection in the
+list is saved.
+In interactive use, no prefix argument saves the current collection. With one
+prefix argument, the user may manually select a collection to save and any other
+prefix argument saves all collections.
 If the optional argument RELEASE-LOCK is non-nil, Emacs will release the lock of
-the corresponding desktop file. This option is always nil in interactive use. If
-the optional argument NO-MSG is non-nil, don't print any messages."
+the corresponding desktop file. This argument is nil in interactive use.
+If the optional argument MSG is non-nil, print a message. In interactive use,
+this depends on the value of `perject-messages'."
   (interactive
    (list
-    (if (or current-prefix-arg
-            (not (perject-current)))
-        (perject--get-collection-name
-		 "Save collection: " 'active nil t (car (perject-current))
-		 "No collection to save" "No collection specified")
-      (car (perject-current)))))
-  (perject-desktop-save name release-lock no-msg))
-
-(defun perject-save-collections (names &optional release-lock no-msg)
-  "Save the list of collections NAMES.
-NAMES may have one of the following values:
-- a list of collections to save (non active ones are ignored)
-- 'all: save all active collections
-- 'exit: save the active collections in accordance with `perject-save-on-exit'
-In interactive use, no prefix argument corresponds to 'all, one prefix argument
-corresponds to 'exit and any other prefix argument allows the user to manually
-select the list of collections to be saved using `completing-read-multiple'.
-If the optional argument RELEASE-LOCK is non-nil, Emacs will release the lock of
-the corresponding desktop file. If the optional argument NO-MSG is non-nil, no
-messages are printed."
-  (interactive
-   (list
-	(pcase current-prefix-arg
-	  ('nil 'all)
-	  ('(4) 'exit)
-	  (_ (completing-read-multiple
-		  "Save Collections: " (perject-get-collections 'active) nil t)))))
-  (let ((collections
-		 (pcase names
-		   ((pred listp) names)
-		   ('all (perject-get-collections 'active))
-		   ('exit (pcase perject-save-on-exit
-					('all (perject-get-collections 'active))
-					((pred listp) (if (eq (car perject-save-on-exit) 'not)
-									  (cl-set-difference (perject-get-collections 'active)
-														 (cdr perject-save-on-exit)
-														 :test #'string-equal)
-									perject-save-on-exit))
-					('recent perject--previous-collections)
-					((pred functionp) (funcall perject-save-on-exit
-											   perject--previous-collections
-											   (perject-get-collections 'active))))))))
-    (dolist (name collections)
-	  (perject-desktop-save name release-lock (not (eq (length collections) 1))))
-	(when (and collections (not no-msg))
-	  (message "Perject: Saved collections: %s" (string-join collections ", ")))))
+	(cond ((or (not (perject-current)) (equal current-prefix-arg '(4)))
+		   (perject--get-collection-name
+			"Save collection: " 'active nil t (car (perject-current))
+			"No collection to save" "No collection specified"))
+		  (current-prefix-arg 'all)
+		  (t (car (perject-current))))
+	nil (memq 'save perject-messages)))
+  (cond
+   ((stringp name) (perject-desktop-save name release-lock msg))
+   ((eq (length name) 1) (perject-desktop-save (car name) release-lock msg))
+   (t (dolist (col name)
+		(perject-desktop-save col release-lock nil))
+	  (when (and name msg)
+		(message "Perject: Saved collections: %s" (string-join collections ", "))))))
 
 
 ;;;; Switching
@@ -2197,11 +2182,11 @@ This function also adds NAME to the alist of active collections `perject-collect
 						   (funcall perject-frame-title-format (perject-current frame)))))
   (run-hook-with-args 'perject-desktop-after-load-hook name))
 
-(defun perject-desktop-save (name &optional release-lock no-msg)
+(defun perject-desktop-save (name &optional release-lock msg)
   "Using `desktop-save' save the collection named NAME to the corresponding desktop file.
 If the optional argument RELEASE-LOCK is non-nil, Emacs will release the lock of
-the corresponding desktop file. If the optional argument NO-MSG is non-nil,
-don't print any messages."
+the corresponding desktop file. If the optional argument MSG is non-nil, print a
+message after saving the collection."
   (unless (perject-collection-p name 'active)
 	(error "Collection '%s' does not exist" name))
   (run-hook-with-args 'perject-desktop-save-hook name)
@@ -2272,7 +2257,7 @@ don't print any messages."
 	  (desktop-save (file-name-as-directory
 					 (perject-get-collection-dir name))
 					release-lock)))
-  (unless no-msg (message "Perject: Saved collection %s" name)))
+  (when msg (message "Perject: Saved collection %s" name)))
 
 (defun perject-desktop-print-info (name)
   "Print information about the collection named NAME that was just restored.

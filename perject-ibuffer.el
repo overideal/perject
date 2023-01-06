@@ -41,7 +41,7 @@ This influences the commands `perject-ibuffer-add-to-project' and
 
 ;;;; Filters
 
-;;;###autoload (autoload 'ibuffer-filter-by-name "ibuf-ext")
+;;;###autoload (autoload 'ibuffer-filter-by-collection "perject-ibuffer")
 (define-ibuffer-filter collection
 	"Limit current view to buffers belonging to collection QUALIFIER.
 If QUALIFIER is nil, only show the anonymous buffers; i.e. those not
@@ -56,7 +56,7 @@ belonging to any project."
 	  (perject-is-assoc-with buf qualifier)
 	(perject-anonymous-buffer-p buf)))
 
-;;;###autoload (autoload 'ibuffer-filter-by-name "ibuf-ext")
+;;;###autoload (autoload 'ibuffer-filter-by-project "perject-ibuffer")
 (define-ibuffer-filter project
 	"Limit current view to buffers belonging to project QUALIFIER.
 If QUALIFIER is nil, only show the anonymous buffers; i.e. those not
@@ -74,7 +74,7 @@ projects."
 	  (perject-is-assoc-with buf qualifier)
 	(perject-anonymous-buffer-p buf)))
 
-
+;;;###autoload
 (defun perject-ibuffer-enable-filter-by-collection (&optional name)
   "Enable the filter `ibuffer-filter-by-collection' for the collection named NAME.
 This means that only the buffers that belong to a project of that collection are
@@ -94,6 +94,7 @@ This also disables all previous filters by project or collection."
 	(when (or current-filter current-filter-proj)
 	  (ibuffer-update nil t))))
 
+;;;###autoload
 (defun perject-ibuffer-enable-filter-by-project (&optional proj)
   "Enable the filter `ibuffer-filter-by-project' for the project PROJ.
 This means that only the buffers of the project PROJ are shown.
@@ -117,6 +118,7 @@ This also disables all previous filters by project or collection."
 
 ;;;; Commands
 
+;;;###autoload
 (defun perject-ibuffer-add-to-project (proj)
   "Add the marked buffers or the buffer at point to the project PROJ.
 PROJ is a dotted pair with car a collection and cdr a project name.
@@ -153,6 +155,7 @@ user choose the project."
 	(when perject-ibuffer-update-after-buffer-to-project
 	  (ibuffer-update nil t))))
 
+;;;###autoload
 (defun perject-ibuffer-remove-from-project (proj)
   "Remove the marked buffers or the buffer at point from the project named NAME.
 PROJ is a dotted pair with car a collection and cdr a project name.
@@ -188,6 +191,7 @@ user choose the project."
 	(when perject-ibuffer-update-after-buffer-to-project
 	  (ibuffer-update nil t))))
 
+;;;###autoload
 (defun perject-ibuffer-print-buffer-projects ()
   "Print the names of the projects with which the buffer at point is associated."
   (interactive)

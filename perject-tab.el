@@ -223,6 +223,7 @@ the project and the index being toggled."
 
 ;;;; The Mode
 
+;;;###autoload
 (define-minor-mode perject-tab-mode
   "Add tab (window configuration) support to `perject'."
   :global t

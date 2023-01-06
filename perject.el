@@ -560,6 +560,7 @@ Should not be modified by the user.")
 
 ;;;; The Mode
 
+;;;###autoload
 (define-minor-mode perject-mode
   "Group buffers and frames into projects which are preserved when restarting."
   :global t

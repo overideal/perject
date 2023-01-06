@@ -20,6 +20,22 @@
 (defface perject-current-face '((t :inherit font-lock-keyword-face))
   "The face used for displaying the the current collection or project.")
 
+(defface perject-sort-collections-current '((t :inherit font-lock-keyword-face))
+  "The face used for displaying the name of the current collection when ordering collections.
+This influences the command `perject-sort-collections'.")
+
+(defface perject-sort-collections-other '((t :inherit font-lock-comment-face))
+  "The face used for displaying the name of the non-current collection when ordering collections.
+This influences the command `perject-sort-collections'.")
+
+(defface perject-sort-projects-current '((t :inherit font-lock-keyword-face))
+  "The face used for displaying the name of the current project when ordering projects.
+This influences the command `perject-sort-projects'.")
+
+(defface perject-sort-projects-other '((t :inherit font-lock-comment-face))
+  "The face used for displaying the name of the non-current project when ordering projects.
+This influences the command `perject-sort-projects'.")
+
 (defcustom perject-close-default '(t t t)
   "The default values for the command `perject-close'.
 The value of this variable must be a list with three elements:
@@ -183,6 +199,12 @@ above values above to nil and use `perject-after-delete-collection-hook' or
 (defvar perject--transient nil
   "A list used in the various transient functions of `perject'.")
 
+(defvar perject--sort-collections-index 0
+  "Index of the current collection in `perject-sort-collections'.")
+
+(defvar perject--sort-projects-index 0
+  "Index of the current project in `perject-sort-projects'.")
+
 
 ;;;; Commands
 
@@ -307,6 +329,60 @@ instead."
 	(if current-prefix-arg
 		(perject--choose-collection)
 	  (perject--choose-project))))
+
+;;;###autoload (autoload 'perject-sort-collections "perject-transient" nil t)
+(transient-define-prefix perject-sort-collections ()
+  "Transient menu to sort the active collections.
+This is for example useful to influence the order in which collections are
+loaded and to influence the order used for `perject-next-collection' and
+`perject-previous-collection'."
+  [:description
+   (lambda ()
+	 (let ((col (perject-get-collections 'active)))
+	   (unless (> (length col) 0)
+		 (user-error "There currently are no collections to sort"))
+	   (setq perject--sort-collections-index (min perject--sort-collections-index (1- (length col))))
+	   (let ((current (nth perject--sort-collections-index col)))
+		 (concat
+		  "Sort collections: "
+		  (string-join (mapcar (lambda (c)
+								 (propertize c 'face
+											 (if (string-equal c current)
+												 'perject-sort-collections-current
+											   'perject-sort-collections-other)))
+							   col)
+					   ", ")))))
+   ("f" "Shift marked collection to right" perject--sort-collections-shift-right :transient t)
+   ("b" "Shift marked collection to left" perject--sort-collections-shift-left :transient t)
+   ("n" "Select the next collection" perject--sort-collections-next :transient t)
+   ("p" "Select the previous collection" perject--sort-collections-previous :transient t)])
+
+;;;###autoload (autoload 'perject-sort-projects "perject-transient" nil t)
+(transient-define-prefix perject-sort-projects ()
+  "Transient menu to sort the projects of the current collection.
+This is for example useful to influence the order used for
+`perject-next-project' and `perject-previous-project'."
+  [:description
+   (lambda ()
+	 (perject-assert-collection)
+	 (let ((projects (mapcar #'cdr (perject-get-projects (car (perject-current))))))
+	   (unless (> (length projects) 0)
+		 (user-error "The current collection has no projects to sort"))
+	   (setq perject--sort-projects-index (min perject--sort-projects-index (1- (length projects))))
+	   (let ((current (nth perject--sort-projects-index projects)))
+		 (format "Sort projects of collection '%s': %s"
+				 (car (perject-current))
+				 (string-join (mapcar (lambda (p)
+										(propertize p 'face
+													(if (equal p current)
+														'perject-sort-projects-current
+													  'perject-sort-projects-other)))
+									  projects)
+							  ", ")))))
+   ("f" "Shift marked project to right" perject--sort-projects-shift-right :transient t)
+   ("b" "Shift marked project to left" perject--sort-projects-shift-left :transient t)
+   ("n" "Select the next project" perject--sort-projects-next :transient t)
+   ("p" "Select the previous project" perject--sort-projects-previous :transient t)])
 
 
 ;;;; Helper Functions
@@ -463,6 +539,113 @@ instead."
 						(format "%s frames" (length frames)))
 					  (if (stringp proj) proj (perject-project-to-string proj))))))
 	  (car strings))))
+
+(defun perject--sort-collections-shift-right ()
+  "Shift collection to the right.
+The collection is determined by `perject--sort-collections-index'."
+  (interactive)
+  (unless (eq transient-current-command 'perject-sort-collections)
+    (user-error "This function can only be called within `perject-sort-collections'"))
+  (setq perject-collections
+		(if (eq perject--sort-collections-index (1- (length perject-collections)))
+			;; The current entry is the last one.
+			(cons (car (last perject-collections)) (butlast perject-collections))
+		  (append
+		   (seq-take perject-collections perject--sort-collections-index)
+		   (list (nth (1+ perject--sort-collections-index) perject-collections))
+		   (list (nth perject--sort-collections-index perject-collections))
+		   (seq-drop perject-collections (+ perject--sort-collections-index 2)))))
+  (setq perject--sort-collections-index (mod (1+ perject--sort-collections-index) (length perject-collections))))
+
+(defun perject--sort-collections-shift-left ()
+  "Shift collection to the left.
+The collection is determined by `perject--sort-collections-index'."
+  (interactive)
+  (unless (eq transient-current-command 'perject-sort-collections)
+    (user-error "This function can only be called within `perject-sort-collections'"))
+  (let ((length (length perject-collections)))
+	;; In the right shift function, we don't apply a transposition in the
+	;; special case that the collection is the rightmost element.
+	;; Therefore, here we need to manually take care of the case that the
+	;; collection is the leftmost element.
+	(if (eq perject--sort-collections-index 0)
+		(setq perject-collections
+			  (append (cdr perject-collections) (list (car perject-collections))))
+	  (let ((perject--sort-collections-index (mod (1- perject--sort-collections-index) length)))
+		(perject--sort-collections-shift-right)))
+	(setq perject--sort-collections-index (mod (1- perject--sort-collections-index) length))))
+
+(defun perject--sort-collections-next ()
+  "Select the next collection as determined by `perject--sort-collections-index'."
+  (interactive)
+  (unless (eq transient-current-command 'perject-sort-collections)
+    (user-error "This function can only be called within `perject-sort-collections'"))
+  (setq perject--sort-collections-index (mod (1+ perject--sort-collections-index) (length perject-collections))))
+
+(defun perject--sort-collections-previous ()
+  "Select the previous collection as determined by `perject--sort-collections-index'."
+  (interactive)
+  (unless (eq transient-current-command 'perject-sort-collections)
+    (user-error "This function can only be called within `perject-sort-collections'"))
+  (setq perject--sort-collections-index (mod (1- perject--sort-collections-index) (length perject-collections))))
+
+(defun perject--sort-projects-shift-right ()
+  "Shift project to the right.
+The project is determined by `perject--sort-projects-index'."
+  (interactive)
+  (unless (eq transient-current-command 'perject-sort-projects)
+    (user-error "This function can only be called within `perject-sort-projects'"))
+  (let ((projects (alist-get (car (perject-current)) perject-collections nil nil #'string-equal)))
+	(setcdr (assoc (car (perject-current)) perject-collections)
+			(if (eq perject--sort-projects-index (1- (length projects)))
+				;; The current entry is the last one.
+				;; In the other case we interchange the two entries (apply a
+				;; transposition). To stay with the "shift" metaphor, we don't
+				;; do the same here but simply move the project to the start of
+				;; the list.
+				(cons (car (last projects)) (butlast projects))
+			  (append
+			   (seq-take projects perject--sort-projects-index)
+			   (list (nth (1+ perject--sort-projects-index) projects)
+					 (nth perject--sort-projects-index projects))
+			   (seq-drop projects (+ perject--sort-projects-index 2)))))
+	(setq perject--sort-projects-index (mod (1+ perject--sort-projects-index) (length projects)))))
+
+(defun perject--sort-projects-shift-left ()
+  "Shift project to the left.
+The collection is determined by `perject--sort-projects-index'."
+  (interactive)
+  (unless (eq transient-current-command 'perject-sort-projects)
+    (user-error "This function can only be called within `perject-sort-projects'"))
+  (let ((length (length (alist-get (car (perject-current)) perject-collections nil nil #'string-equal))))
+	;; See `perject--sort-collections-shift-left' for an explanation of the case
+	;; distinction.
+	(if (eq perject--sort-projects-index 0)
+		(let ((projects (alist-get (car (perject-current)) perject-collections nil nil #'string-equal)))
+		  (setcdr (assoc (car (perject-current)) perject-collections)
+				  (append (cdr projects) (list (car projects)))))
+	  (let ((perject--sort-projects-index (mod (1- perject--sort-projects-index) length)))
+		(perject--sort-projects-shift-right)))
+	(setq perject--sort-projects-index (mod (1- perject--sort-projects-index) length))))
+
+(defun perject--sort-projects-next ()
+  "Select the next collection as determined by `perject--sort-projects-index'."
+  (interactive)
+  (unless (eq transient-current-command 'perject-sort-projects)
+    (user-error "This function can only be called within `perject-sort-projects'"))
+  (setq perject--sort-projects-index
+		(mod (1+ perject--sort-projects-index)
+			 (length (alist-get (car (perject-current)) perject-collections nil nil #'string-equal)))))
+
+(defun perject--sort-projects-previous ()
+  "Select the previous collection as determined by `perject--sort-projects-index'."
+  (interactive)
+  (unless (eq transient-current-command 'perject-sort-projects)
+    (user-error "This function can only be called within `perject-sort-projects'"))
+  (setq perject--sort-projects-index
+		(mod (1- perject--sort-projects-index)
+			 (length (alist-get (car (perject-current)) perject-collections nil nil #'string-equal)))))
+
 
 
 (provide 'perject-transient)

@@ -81,6 +81,7 @@ This influences the command `perject-sort-projects'.")
 
 (defcustom perject-switch-to-new-collection 'new
   "Whether and how to switch to a newly created collection within `perject-open-collection'.
+
 It may have one of the following values:
 - nil: Do not switch to the newly created collection.
 - 'new: Switch to the newly created collection in a new frame.
@@ -93,6 +94,7 @@ It may have one of the following values:
 (defcustom perject-load-at-startup nil
   "The variable controls which collections are automatically loaded at startup.
 It may have one of the following values:
+
 - nil: Load no collection.
 - 'all: Load all collections.
 - A list of collection names: Load the specified collections (if existent). If a
@@ -121,6 +123,7 @@ they can be manually sorted, which will be remembered over restarts of Emacs."
 
 (defcustom perject-save-on-exit 'all
   "The variable controls which collections are automatically saved when exiting Emacs.
+
 It may have one of the following values:
 - nil: Don't save any collections.
 - 'all: Save all active collections.
@@ -133,30 +136,14 @@ It may have one of the following values:
   collections. The function should return the list of collection names to be
   saved. It could for example ask the user."
   :type '(choice
-		  (const :tag "Don't save any projects" nil)
+		  (const :tag "Don't save any collections" nil)
 		  (const :tag "Save all active collections" all)
 		  (repeat :tag "Save the specified collections (if existent)"
 				  (choice string (const not)))
 		  (function :tag "Custom function")))
 
-(defcustom perject-save-on-close t
-  "Whether a collection is saved when closing it using `perject-close-collection'.
-It may have one of the following values:
-- t: Always save the collection.
-- 'ask: Ask the user if the collection should be saved.
-- nil: Never save the collection.
-- A function: The function is called with the collection name and the list of
-all its associated buffers as arguments. It should return non-nil if and only if
-the collection is to be saved. Note that this function should not kill any of
-those buffers."
-  :type '(choice
-		  (const :tag "Always save the collection" t)
-		  (const :tag "Ask the user if the collection should be saved" ask)
-		  (const :tag "Never save the collection" nil)
-		  (function :tag "Custom function")))
-
 (defcustom perject-save-frames '(t)
-  "Whether to save the frames of a collection.
+  "Whether saving a collection will also save the frames associated with it.
 The value of the variable must be a list, which is of the following form:
 (default (name . value) ...)
 
@@ -184,65 +171,7 @@ frames of which collection are saved."
 			 (const :tag "Ask the user whether the frames should be saved for this collection" ask)
 			 (const :tag "Do not save the frames for this collection" nil))))))
 
-(defcustom perject-kill-frames-on-close t
-  "When non-nil, delete the frames belonging to a collection that has just been closed.
-Otherwise, keep the frames but remove the collection from them.
-If all frames belong to the collection being closed, never delete them.
-Set this variable to nil and use the hook `perject-after-close-hook' to deal
-with the frames in a custom way."
-  :type '(set
-		  (const :tag "Remove the collection from the frames" nil)
-		  (const :tag "Delete the frames, unless all frames belong to that collection" t)))
-
-(defcustom perject-kill-frames-on-reload t
-  "How to deal with the frames that belong to a reloaded collection but have not been reused.
-It may have one of the following values:
-- nil: Remove the collection from the frames.
-- 'keep: Do not alter the frames, keeping the collection.
-- t: Delete the frames, unless all frames belong to that collection, in which
-  case we remove the collection from the frames.
-Set this variable to nil and use the hook `perject-after-reload-hook' to deal
-with the remaining frames in a custom way."
-  :type '(set
-		  (const :tag "Remove the collection from the frames" nil)
-		  (const :tag "Do not alter the frames, keeping the collection" keep)
-		  (const :tag "Delete the frames, unless all frames belong to that collection" t)))
-
-(defcustom perject-kill-frames-on-project-delete 'keep
-  "How to deal with the frames belonging to a project being deleted.
-It may have one of the following values:
-- nil: Remove the project and collection from the frames.
-- 'keep: Remove the project from the frames, but keep the collection.
-- t: Delete the frames, unless all frames belong to that project.
-Set this variable to nil and use the hook `perject-after-delete-project-hook' to
-deal with the remaining frames in a custom way."
-  :type '(set
-		  (const :tag "Remove the project and collection from the frames" nil)
-		  (const :tag "Remove the project from the frames, but keep the collection" keep)
-		  (const :tag "Delete the frames, unless all frames belong to that project" t)))
-
-(defcustom perject-kill-buffers-by-default '(close delete delete-project)
-  "Whether to kill buffers by default in certain contexts.
-The value of this variable is a list which may contain certain symbols, each of
-which corresponds to a command as indiciated below. Its presence in the list
-implies that the corresponding command will kill buffers as described in the
-command's documentation. When the command is called with a prefix argument, no
-buffers will be killed. In contrast, if the symbol belonging to a command is not
-in the list, the roles are reversed; i.e. no buffers are killed unless the
-command is called with a prefix argument.
-The possible symbols (and the corresponding commands) that may appear in the
-list are as follows:
-- 'close: `perject-close-collection',
-- 'reload: `perject-reload-collection',
-- 'delete: `perject-delete-collection',
-- 'delete-project: `perject-delete-project'."
-  :type '(set
-		  (const :tag "`perject-close-collection'" close)
-		  (const :tag "`perject-reload-collection'" reload)
-		  (const :tag "`perject-delete-collection'" delete)
-		  (const :tag "`perject-delete-project'" delete-project)))
-
-(defcustom perject-raise-and-focus-frame t
+(defcustom perject-raise-and-focus-frame 'init
   "Whether perject should try to raise and focus a frame in certain situations.
 This might or might not yield the desired result, depending on the window
 manager used. If disabled (by modifying this variable), the user may want to
@@ -267,6 +196,7 @@ This variable may have one of the following values:
 (defcustom perject-messages
   '(save add-buffer remove-buffer next-collection previous-collection next-project previous-project)
   "Whether to print informative messages when performing certain actions.
+
 The value of this variable is a list which may contain any of the following
 symbols, whose presence in the list leads to a message being printed in the
 indicated command:
@@ -288,46 +218,9 @@ indicated command:
 		  (const :tag "`perject-next-project'" next-project)
 		  (const :tag "`perject-previous-project'." previous-project)))
 
-(defcustom perject-confirmation '(delete delete-project)
-  "Whether to ask for confirmation before performing certain actions.
-The value of this varaible is a list which may contain any of the following
-symbols, whose presence in the list has the mentioned effect:
-- 'close: Ask before closing a collection using `perject-close-collection'.
-- 'reload: Ask before reloading a collection using `perject-reload-collection'.
-- 'delete: Ask before deleting a collection using `perject-delete-collection'.
-- 'delete-project: Ask before deleting a project using `perject-delete-project'."
-  :type '(set
-		  (const :tag "Ask before closing a collection using `perject-close-collection'" close)
-		  (const :tag "Ask before reloading a collection using `perject-reload-collection'" reload)
-		  (const :tag "Ask before deleting a collection using `perject-delete-collection'" delete)
-		  (const :tag "Ask before deleting a project using `perject-delete-project'" delete-project)))
-
-(defcustom perject-confirmation-kill-frames nil
-  "Whether to ask for confirmation before killing frames in certain contexts.
-The value of this variable is a list which may contain any of the following
-symbols, whose presence in the list has the mentioned effect:
-- 'close: Ask before killing frames in `perject-close-collection'.
-- 'reload: Ask before killing frames in `perject-reload-collection'.
-- 'delete-project: Ask before killing frames in `perject-delete-project'."
-  :type '(set
-		  (const :tag "Ask before killing frames in `perject-close-collection'" close)
-		  (const :tag "Ask before killing frames in `perject-reload-collection'" reload)
-		  (const :tag "Ask before killing frames in `perject-delete-project'" delete-project)))
-
-(defcustom perject-confirmation-kill-buffers '(close delete-project)
-  "Whether to ask for confirmation before killing buffers in certain contexts.
-The value of this variable is a list which may contain any of the following
-symbols, whose presence in the list has the mentioned effect:
-- 'close: Ask before killing buffers in `perject-close-collection'.
-- 'reload: Ask before killing buffers in `perject-reload-collection'.
-- 'delete-project: Ask before killing buffers in `perject-delete-project'."
-  :type '(set
-		  (const :tag "Ask before killing buffers in `perject-close-collection'" close)
-		  (const :tag "Ask before killing buffers in `perject-reload-collection'" reload)
-		  (const :tag "Ask before killing buffers in `perject-delete-project'" delete-project)))
-
 (defcustom perject-mode-line-format #'perject-mode-line-indicator
   "This variable determines the mode line indicator of perject.
+
 It may have one of the following two values:
 - nil: No mode line entry is shown for perject.
 - A function: Call that function with two strings as an argument, namely the
@@ -342,6 +235,7 @@ displays the name of the current collection and project with the face
 
 (defcustom perject-frame-title-format #'perject-frame-title
   "This variable determines the format of the title of a frame.
+
 It may have one of the following two values:
 - nil: The title of a frame is not altered by perject.
 - A function: Call the function with a dotted pair as its only argument,
@@ -537,7 +431,7 @@ creating the project."
   :type 'hook)
 
 (defcustom perject-before-close-hook nil
-  "Hook run before perject closes a collection using `perject-close-collection'.
+  "Hook run before perject closes a collection using `perject-close'.
 The functions are called with three arguments, namely the name of the collection
 to be closed, a list of all frames that belong to the collection or some project
 of it and have not been killed and a list containing all buffers that are
@@ -547,7 +441,7 @@ Do not kill any of those frames or buffers in this hook. Use
   :type 'hook)
 
 (defcustom perject-after-close-hook nil
-  "Hook run after perject has closed a collection using `perject-close-collection'.
+  "Hook run after perject has closed a collection using `perject-close'.
 The functions are called with three arguments, namely the name of the closed
 collection, a list of all frames that belonged to the collection or some project
 of it and have not been killed and a list containing all buffers that were
@@ -555,7 +449,7 @@ associated with some project of this collection and that have not been killed."
   :type 'hook)
 
 (defcustom perject-before-reload-hook nil
-  "Hook run before perject reloads a collection using `perject-reload-collection'.
+  "Hook run before perject reloads a collection using `perject-reload'.
 The functions are called with three arguments, namely the name of the collection
 to be reloaded, a list of all frames that belong to the collection or some
 project of it and have not been killed and a list containing all buffers that
@@ -565,7 +459,7 @@ Do not kill any of those frames or buffers in this hook. Use
   :type 'hook)
 
 (defcustom perject-after-reload-hook nil
-  "Hook run after perject has reloaded a collection using `perject-reload-collection'.
+  "Hook run after perject has reloaded a collection using `perject-reload'.
 The functions are called with three arguments, namely the name of the reloaded
 collection, a list of all frames that belonged to the collection before
 reloading and have not been killed and the list of buffers that were associated
@@ -580,19 +474,19 @@ dotted pairs representing projects."
   :type 'hook)
 
 (defcustom perject-before-delete-collection-hook nil
-  "Hook run before perject deletes a collection using `perject-delete-collection'.
+  "Hook run before perject deletes a collection using `perject-delete'.
 The functions are called with one argument, namely the name of the collection to
 be deleted."
   :type 'hook)
 
 (defcustom perject-after-delete-collection-hook nil
-  "Hook run after perject has deleted a collection using `perject-delete-collection'.
+  "Hook run after perject has deleted a collection using `perject-delete'.
 The functions are called with one argument, namely the name of the deleted
 collection."
   :type 'hook)
 
 (defcustom perject-before-delete-project-hook nil
-  "Hook run before perject deletes a project using `perject-delete-project'.
+  "Hook run before perject deletes a project using `perject-delete'.
 The functions are called with three arguments, namely the name of the project to
 be deleted, a list of frames that currently display this project and a list
 containing all buffers that are currently associated with this project.
@@ -601,7 +495,7 @@ Do not kill any of those frames or buffers in this hook. Use
   :type 'hook)
 
 (defcustom perject-after-delete-project-hook nil
-  "Hook run after perject has deleted a project using `perject-delete-project'.
+  "Hook run after perject has deleted a project using `perject-delete'.
 The functions are called with three arguments, namely the name of the deleted
 project, a list of frames that were associated with this project and have not
 been killed and a list containing all buffers that were associated with this
@@ -975,101 +869,61 @@ the same collection."
 	  (with-current-buffer buffer
 		(setq perject-buffer (cl-substitute new-proj proj perject-buffer :test #'equal))))))
 
-(defun perject-delete-collection (name &optional kill-buffers)
+(defun perject-delete-collection (name kill-frames kill-buffers)
   "Delete the collection named NAME.
-This includes closing the collection and deleting all corresponding projects and
-the corresponding desktop file. In interactive use, the user is asked for NAME.
-The variable `perject-confirmation' determines whether the user is asked for
-confirmation before deleting the collection.
-If the optional argument KILL-BUFFERS is non-nil, kill all buffers that belong
-to that collection and to no other collection or project. In interactive use,
-the prefix argument determines this variable as specified by
-`perject-kill-buffers-by-default'.
-The variable `perject-confirmation-kill-buffers' decides if the user is asked
-for confirmation before any buffers are killed.
+Deleting a collection encompasses closing the collection (if active) and
+deleting all its projects and the corresponding desktop file.
+KILL-FRAMES and KILL-BUFFERS are interpreted as described in the variables
+`perject-delete-default' (except that any functions must have been replaced with
+their return values).
+
 This function runs the hooks `perject-before-delete-collection-hook' and
 `perject-after-delete-collection-hook'."
-  (interactive
-   (list
-    (perject--get-collection-name
-     "Delete collection: " 'all nil t (car (perject-current))
-     "There currently is no collection to delete"
-	 "No collection specified")
-    (or (and (member 'delete perject-kill-buffers-by-default) (not current-prefix-arg))
-		(and (not (member 'delete perject-kill-buffers-by-default)) current-prefix-arg))))
-  (when (or (not (member 'delete perject-confirmation))
-            (y-or-n-p (format "Deleting collection '%s'. Are you sure?" name)))
 	(run-hook-with-args 'perject-before-delete-collection-hook name)
     ;; If the collection is active, close it.
     (when (perject-collection-p name 'active)
-      (let (perject-save-on-close perject-confirmation)
-        (perject-close-collection name perject-kill-frames-on-close kill-buffers)))
+      (perject-close-collection name nil kill-frames kill-buffers))
     (when (file-exists-p (perject-get-collection-dir name))
       (delete-directory (perject-get-collection-dir name) t))
-	(run-hook-with-args 'perject-after-delete-collection-hook name)))
+	(run-hook-with-args 'perject-after-delete-collection-hook name))
 
-(defun perject-delete-project (proj &optional kill-frames kill-buffers)
+(defun perject-delete-project (proj kill-frames kill-buffers)
   "Delete the project PROJ.
-In interactive use, the user is asked for PROJ.
-The optional argument KILL-FRAMES determines how to deal with the frames
-belonging to the project. Its value is interpreted like that of
-`perject-kill-frames-on-project-delete', which also defines its value in
-interactive use.
-If the optional argument KILL-BUFFERS is non-nil, kill all buffers that belong
-to that project and to no other collection or project.
-In interactive use, the prefix argument determines the value of KILL-BUFFERS as
-specified by `perject-kill-buffers-by-default'.
-The variable `perject-confirmation' decides whether the user is asked for
-confirmation before the collection is closed. Furthermore, the variable
-`perject-confirmation-kill-buffers' specifies if the user is asked for
-confirmation before any buffers are killed.
+KILL-FRAMES and KILL-BUFFERS are interpreted as described in the variables
+`perject-delete-default' (except that any functions must have been replaced with
+their return values).
+
 This function runs the hooks `perject-before-delete-project-hook' and
 `perject-after-delete-project-hook'."
-  (interactive
-   (list
-    (perject--get-project-name
-     "Delete project: " 'all nil t (perject-current)
-     "There currently is no project to delete"
-	 "No project specified")
-	perject-kill-frames-on-project-delete
-    (or (and (member 'delete-project perject-kill-buffers-by-default) (not current-prefix-arg))
-		(and (not (member 'delete-project perject-kill-buffers-by-default)) current-prefix-arg))))
-  (when (or (not (member 'delete-project perject-confirmation))
-            (y-or-n-p (format "Deleting project '%s'. Are you sure?"
-							  (perject-project-to-string proj))))
-	(let ((buffers (perject-get-buffers proj))
-		  (frames (perject-get-frames proj))
-		  buffers-to-kill)
-	  (run-hook-with-args 'perject-before-delete-project-hook proj frames buffers)
-	  ;; Remove the project from the list of active collections.
-	  (let ((col (assoc (car proj) perject-collections)))
-		(setcdr col (delete (cdr proj) (cdr col))))
-	  ;; Remove all buffers from the project.
-	  (dolist (buffer buffers)
-		(with-current-buffer buffer
-		  (setq perject-buffer (delete proj perject-buffer))
-		  (unless perject-buffer
-			(push buffer buffers-to-kill))))
-	  ;; Deal with the frames belonging to the project.
-	  (let ((delete-frames (and kill-frames
-								(not (eq kill-frames 'keep))
-								frames
-								(not (eq (length frames) (length (frame-list))))
-								(or (not (member 'delete-project perject-confirmation-kill-frames))
-									(perject--kill-frames-y-or-n-p proj frames)))))
-		(dolist (frame frames)
-		  (if delete-frames
-			  (delete-frame frame)
-			(perject-set-current (and (eq kill-frames 'keep) (car proj)) frame)))
-		(when delete-frames (setq frames nil)))
-	  (when (and kill-buffers
-				 buffers-to-kill
-				 (or (not (member 'delete-project perject-confirmation-kill-buffers))
-					 (perject--kill-buffers-y-or-n-p proj buffers-to-kill)))
-		(dolist (buffer buffers-to-kill)
-		  (kill-buffer buffer))
-		(setq buffers (cl-set-difference buffers buffers-to-kill)))
-	  (run-hook-with-args 'perject-after-delete-project-hook proj frames buffers))))
+  (run-hook-with-args 'perject-before-delete-project-hook
+					  proj (perject-get-frames proj) (perject-get-buffers proj))
+  (let ((buffers (perject-get-buffers proj))
+		(frames (perject-get-frames proj))
+		buffers-to-kill)
+	;; Remove the project from the list of active collections.
+	(let ((col (assoc (car proj) perject-collections)))
+	  (setcdr col (delete (cdr proj) (cdr col))))
+	;; Deal with the buffers belonging to the project.
+	(dolist (buffer buffers)
+	  (with-current-buffer buffer
+		(setq perject-buffer (delete proj perject-buffer))
+		(unless (or perject-buffer (eq kill-buffers 'all) (not kill-buffers))
+		  (push buffer buffers-to-kill))))
+	(when (eq kill-buffers 'all)
+	  (setq buffers-to-kill buffers))
+	;; Deal with the frames belonging to the project.
+	(let ((delete-frames (and kill-frames
+							  (not (eq kill-frames 'keep))
+							  (not (eq (length frames) (length (frame-list)))))))
+	  (dolist (frame frames)
+		(if delete-frames
+			(delete-frame frame)
+		  (perject-set-current (and (eq kill-frames 'keep) (car proj)) frame)))
+	  (when delete-frames (setq frames nil)))
+	(dolist (buffer buffers-to-kill)
+	  (kill-buffer buffer))
+	(setq buffers (cl-set-difference buffers buffers-to-kill))
+	(run-hook-with-args 'perject-after-delete-project-hook proj frames buffers)))
 
 
 ;;;; Opening, Closing and Saving
@@ -1121,9 +975,13 @@ In interactive use, the user is asked for the collection name."
 		;; window configuration.
 		;; If we e.g. used `save-window-excursion', then those functions would
 		;; not be able to change the window configuration of the current frame.
-		(let* ((wc (current-window-configuration))
-			   (desktop-after-read-hook (cons (lambda () (set-window-configuration wc t))
-											  desktop-after-read-hook)))
+		(let* ((frame (selected-frame))
+			   (wc (current-window-configuration))
+			   (desktop-after-read-hook
+				(cons (lambda ()
+						(unless (memq frame perject--desktop-restored-frames)
+						  (set-window-configuration wc t)))
+					  desktop-after-read-hook)))
 		  (perject-desktop-load name))
 		(dolist (hook perject-auto-add-hooks)
 		  (add-hook hook #'perject--auto-add-buffer))
@@ -1135,7 +993,6 @@ In interactive use, the user is asked for the collection name."
 	(pcase perject-switch-to-new-collection
 	  ('new (perject-create-new-frame name))
 	  ('t (perject-switch name)))))
-
 
 (defun perject-open-collection-in-new-instance (name)
   "Open a new Emacs instance for the collection named NAME.
@@ -1152,134 +1009,87 @@ In interactive use, the user is asked for the collection name."
     ;; https://emacs.stackexchange.com/questions/5428/restart-emacs-from-within-emacs.
     (call-process "sh" nil nil nil "-c" (concat "emacs " parameter " &"))))
 
-(defun perject-close-collection (name &optional kill-frames kill-buffers)
+(defun perject-close-collection (name save kill-frames kill-buffers)
   "Close the collection named NAME.
-This closes all projects belonging to this collection. In interactive
-use, the user is asked for NAME.
-The optional argument KILL-FRAMES determines how to deal with the frames
-belonging to the collection or to a project of it. Its value is interpreted like
-that of `perject-kill-frames-on-close', which also defines its value in
-interactive use.
-If the optional argument KILL-BUFFERS is non-nil, kill all buffers that belong
-to that collection and to no other collection or project.
-In interactive use, the prefix argument determines the value of KILL-BUFFERS as
-specified by `perject-kill-buffers-by-default'.
-Depending on the value of the variable `perject-save-on-close', the collection
-is saved to a desktop file.
-The variable `perject-confirmation' decides whether the user is asked for
-confirmation before the collection is closed. Furthermore, the variables
-`perject-confirmation-kill-frames' and `perject-confirmation-kill-buffers' can
-be used to ask for additional confirmation before killing frames or buffers.
+This closes all projects belonging to the collection.
+The three arguments SAVE, KILL-FRAMES and KILL-BUFFERS are interpreted as
+described in the variable `perject-close-default' (except that any functions
+must have been replaced with their return values).
+
 This function runs the hooks `perject-before-close-hook' and
 `perject-after-close-hook'."
-  (interactive
-   (list
-    (perject--get-collection-name
-     "Close collection: " 'active nil t (car (perject-current))
-     "There currently is no collection to close"
-	 "No collection specified")
-	perject-kill-frames-on-close
-	(or (and (member 'close perject-kill-buffers-by-default) (not current-prefix-arg))
-		(and (not (member 'close perject-kill-buffers-by-default)) current-prefix-arg))))
-  (when (or (not (member 'close perject-confirmation))
-            (y-or-n-p (format "Closing collection '%s'. Are you sure?" name)))
-	(let ((buffers (perject-get-buffers name))
-		  (frames (perject-get-frames name))
-		  buffers-to-kill)
-      (run-hook-with-args 'perject-before-close-hook name frames buffers)
-      (if (or (eq perject-save-on-close t)
-              (and (eq perject-save-on-close 'ask)
-                   (y-or-n-p (format "Save the collection '%s'? " name)))
-			  (and (functionp perject-save-on-close)
-				   (funcall perject-save-on-close name) buffers))
-		  (perject-save-collection name t t)
-		;; If we don't save, we need to manually remove the lock file.
-		(desktop-release-lock (file-name-as-directory (perject-get-collection-dir name))))
-	  ;; Remove the collection from the list of active collections.
-	  (setq perject-collections (assoc-delete-all name perject-collections))
-	  ;; Remove all buffers from the collection.
-	  (dolist (buffer buffers)
-		(with-current-buffer buffer
-		  (setq perject-buffer
-				(cl-delete-if (-compose (apply-partially #'string-equal name) #'car)
-							  perject-buffer))
-		  (unless perject-buffer
-			(push buffer buffers-to-kill))))
-	  ;; Deal with the frames belonging to the collection.
-	  (let ((delete-frames (and kill-frames
-								frames
-								(not (eq (length frames) (length (frame-list))))
-								(or (not (member 'close perject-confirmation-kill-frames))
-									(perject--kill-frames-y-or-n-p name frames)))))
-		(dolist (frame frames)
-		  (if delete-frames
-			  (delete-frame frame)
-			(perject-set-current nil frame)))
-		(when delete-frames (setq frames nil)))
-	  (when (and kill-buffers
-				 buffers-to-kill
-				 (or (not (member 'close perject-confirmation-kill-buffers))
-					 (perject--kill-buffers-y-or-n-p name buffers-to-kill)))
-		(dolist (buffer buffers-to-kill)
-		  (kill-buffer buffer))
-		(setq buffers (cl-set-difference buffers buffers-to-kill)))
-      (run-hook-with-args 'perject-after-close-hook name frames buffers))))
+  (run-hook-with-args 'perject-before-close-hook name (perject-get-buffers name) (perject-get-frames name))
+  ;; Recompute the buffers and frames after the hook, in case e.g. the hook
+  ;; function killed any frames or buffers.
+  (let ((buffers (perject-get-buffers name))
+		(frames (perject-get-frames name))
+		buffers-to-kill)
+    (if save
+		(perject-save-collection name t t)
+	  ;; If we don't save, we need to manually remove the lock file.
+	  (desktop-release-lock (file-name-as-directory (perject-get-collection-dir name))))
+	;; Remove the collection from the list of active collections.
+	(setq perject-collections (assoc-delete-all name perject-collections))
+	;; Deal with the buffers belonging to the collection.
+	(dolist (buffer buffers)
+	  (with-current-buffer buffer
+		(setq perject-buffer
+			  (cl-delete-if (-compose (apply-partially #'string-equal name) #'car)
+							perject-buffer))
+		(unless (or perject-buffer (eq kill-buffers 'all) (not kill-buffers))
+		  (push buffer buffers-to-kill))))
+	(when (eq kill-buffers 'all)
+	  (setq buffers-to-kill buffers))
+	;; Deal with the frames belonging to the collection.
+	(let ((kill-frames (and kill-frames
+							(not (eq (length frames) (length (frame-list)))))))
+	  (dolist (frame frames)
+		(if kill-frames
+			(delete-frame frame)
+		  (perject-set-current nil frame)))
+	  (when kill-frames (setq frames nil)))
+	(dolist (buffer buffers-to-kill)
+		(kill-buffer buffer))
+	(setq buffers (cl-set-difference buffers buffers-to-kill))
+    (run-hook-with-args 'perject-after-close-hook name frames buffers)))
 
-(defun perject-reload-collection (name &optional kill-frames kill-buffers)
+(defun perject-reload-collection (name kill-frames kill-buffers)
   "Reload the collection named NAME from its desktop file.
 This discards any changes to the collection and reverts it to the state from the
 previous save. This is achieved by closing and reopening the collection.
 Frames belonging to the collection are reused.
-The optional argument KILL-FRAMES determines how to deal with the frames that
-belonged to the collection but have not been reused. Its value is interpreted
-like that of `perject-kill-frames-on-reload', which also serves as its value in
-interactive use.
-If the optional argument KILL-BUFFERS is non-nil, kill all buffers that belong
-to that collection and to no other collection or project before reopening the
-collection. In interactive use, the prefix argument determines the value of
-KILL-BUFFERS as specified by `perject-kill-buffers-by-default'.
-The variable `perject-confirmation' decides whether the user is asked for
-confirmation before the collection is reloaded. Furthermore, the variables
-`perject-confirmation-kill-frames' and `perject-confirmation-kill-buffers' can
-be used to ask for additional confirmation before killing frames or buffers.
+KILL-FRAMES and KILL-BUFFERS are interpreted as described in the variables
+`perject-reload-default' (except that any functions must have been replaced with
+their return values).
+
 This function runs the hooks `perject-before-reload-hook' and
 `perject-after-reload-hook'."
-  (interactive
-   (list
-	(perject--get-collection-name "Reload collection: " 'active nil t (car (perject-current))
-								  "There is no active collection to reload"
-								  "No collection specified")
-	perject-kill-frames-on-reload
-	(or (and (member 'reload perject-kill-buffers-by-default) (not current-prefix-arg))
-		(and (not (member 'reload perject-kill-buffers-by-default)) current-prefix-arg))))
-  (when (or (not (member 'reload perject-confirmation))
-			(y-or-n-p (format "Reload collection '%s'?" name)))
-	;; Allow reusing frames that belong to the collection.
-	(let* ((frames (perject-get-frames name))
-		   (buffers (perject-get-buffers name))
-		   (perject--desktop-reuse-frames
-			(apply-partially (-flip #'member) frames))
-		   (perject-confirmation-kill-buffers
-			(and (member 'reload perject-confirmation-kill-buffers) (list 'close)))
-		   unused-frames perject-save-on-close)
-	  (run-hook-with-args 'perject-before-reload-hook name frames buffers)
-	  (perject-close-collection name nil kill-buffers)
-	  (perject-open-collection name)
-	  (setq buffers (cl-remove-if-not #'buffer-live-p buffers)
-			unused-frames (cl-set-difference frames perject--desktop-restored-frames))
-	  ;; Deal with the frames that were not reused.
-	  (unless (eq kill-frames 'keep)
-		(let ((delete-frames (and kill-frames
-								  unused-frames
-								  (not (eq (length unused-frames) (length (frame-list))))
-								  (or (not (member 'reload perject-confirmation-kill-frames))
-									  (perject--kill-frames-y-or-n-p name unused-frames t)))))
-		  (dolist (frame unused-frames)
-			(if delete-frames
-				(delete-frame frame)
-			  (perject-set-current nil frame)))))
-	  (setq frames (cl-remove-if-not #'frame-live-p frames))
-	  (run-hook-with-args 'perject-after-reload-hook name frames buffers))))
+  (run-hook-with-args 'perject-before-reload-hook name
+					  (perject-get-frames name) (perject-get-buffers name))
+  ;; Allow reusing frames that belong to the collection.
+  (let* ((frames (perject-get-frames name))
+		 ;; Remember which frames belong to which project.
+		 (project-frames (when (eq kill-frames 'keep)
+							(-annotate #'perject-current frames)))
+		 (buffers (perject-get-buffers name))
+		 (perject--desktop-reuse-frames
+		  (apply-partially (-flip #'member) frames))
+		 unused-frames)
+	(perject-close-collection name nil nil kill-buffers)
+	(perject-open-collection name)
+	(setq buffers (cl-remove-if-not #'buffer-live-p buffers)
+		  unused-frames (cl-set-difference frames perject--desktop-restored-frames))
+	;; Deal with the frames that were not reused.
+	;; They currently belong to no collection because of `perject-close-collection'.
+	(when kill-frames
+	  (let ((delete-frames (and (not (eq kill-frames 'keep))
+								(not (eq (length unused-frames) (length (frame-list)))))))
+		(dolist (frame unused-frames)
+		  (if delete-frames
+			  (delete-frame frame)
+			(perject-switch (car (rassq frame project-frames)) frame)))))
+	(setq frames (cl-remove-if-not #'frame-live-p frames))
+	(run-hook-with-args 'perject-after-reload-hook name frames buffers)))
 
 (defun perject-save-collection (name &optional release-lock msg)
   "Save the collection named NAME.
@@ -1307,7 +1117,7 @@ this depends on the value of `perject-messages'."
    (t (dolist (col name)
 		(perject-desktop-save col release-lock nil))
 	  (when (and name msg)
-		(message "Perject: Saved collections: %s" (string-join collections ", "))))))
+		(message "Perject: Saved collections: %s" (string-join name ", "))))))
 
 
 ;;;; Switching
@@ -1833,7 +1643,8 @@ This means that it is not associated with any project."
 (defun perject-get-frames (proj)
   "Return the currently open frames which belong to PROJ.
 PROJ may either be a dotted pair with car a collection and cdr a project name or
-a collection name."
+a collection name. In the latter case, frames that belong to one of the projects
+of the collection are also returned."
   (cl-remove-if-not (lambda (frame) (perject-is-assoc-with frame proj))
 					(frame-list)))
 
@@ -2098,36 +1909,6 @@ Does nothing to projects that are already associated with the buffer."
 		(when (and (perject-project-p project)
 				   (not (perject-is-assoc-with buffer project)))
 		  (perject-add-buffer-to-project buffer project))))))
-
-(defun perject--kill-buffers-y-or-n-p (proj buffers)
-  "Using `y-or-n-p' ask the user whether the buffers BUFFERS belonging only to the project PROJ should be killed.
-PROJ may be a string representing a collection or a dotted pair with car a
-collection and cdr a project name."
-  (y-or-n-p (format "Kill %s belonging only to %s?"
-					(if (eq (length buffers) 1)
-						(concat "buffer '" (buffer-name (car buffers)) "'")
-					  (format "%s buffers" (length buffers)))
-					(if (stringp proj)
-						(format "collection '%s'" proj)
-					  (format "project '%s'" (perject-project-to-string proj))))))
-
-(defun perject--kill-frames-y-or-n-p (proj frames &optional reuse)
-  "Using `y-or-n-p' ask the user whether the frames FRAMES belonging only to the project PROJ should be killed.
-If the optional argument REUSE is non-nil, alter the prompt to reflect the fact
-that only the frames that were not reused will be killed.
-PROJ may be a string representing a collection or a dotted pair with car a
-collection and cdr a project name."
-  (let ((frame (if (eq (length frames) 1)
-				   "frame"
-				 (format "%s frames" (length frames))))
-		(name (if (stringp proj)
-				  (format "collection '%s'" proj)
-				(format "project '%s'" (perject-project-to-string proj)))))
-	(y-or-n-p
-	 (if reuse
-		 (format "Kill %s of %s that %s not reused?" frame name
-				 (if (eq (length frames) 1) "was" "were"))
-	   (format "Kill %s belonging to %s?" frame name)))))
 
 (defun perject--serialize-mark-ring (value _)
   "Serialize the mark ring."

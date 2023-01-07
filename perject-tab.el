@@ -153,7 +153,7 @@ It may have one of the following values:
   If there is no recent index, use the next index.
 - 'recent-previous: Use the index of the most recently selected tab after deleting.
   If there is no recent index, use the previous index.
-After deleting, perject will also open the corresponding tab if
+After deleting, perject will also switch to the corresponding tab if
 `perject-tab-switch-after-delete' is non-nil.
 Use `perject-tab-delete-hook' in case you want more sophisticated control
 over perject's behavior after deleting a tab."
@@ -192,14 +192,14 @@ Note that the \"dynamic\" state (see `perject-tab-states') depends on the entry
 
 (defcustom perject-tab-create-hook nil
   "Hook run after a new tab was created using `perject-tab-create'.
-The functions are called with one argument, namely a dotted pair representing
-the project."
+The functions are called with two arguments, namely the dotted pair representing
+the project and the affected frame."
   :type 'hook)
 
 (defcustom perject-tab-delete-hook nil
   "Hook run after a tab was deleted using `perject-tab-delete'.
-The functions are called with one argument, namely a dotted pair representing
-the project."
+The functions are called with two arguments, namely the dotted pair representing
+the project and the affected frame."
   :type 'hook)
 
 (defcustom perject-tab-switch-hook nil
@@ -280,9 +280,16 @@ After creating the tab, this function runs the hook
 	  (push (list proj (perject-tab-make nil frame)) perject-tab--tabs))
 	(perject-tab-set-index 'recent (perject-tab-index 'current proj frame) proj frame)
 	(perject-tab-set-index 'current (1+ index) proj frame)
-	(when msg
-	  (message "Created tab for project '%s'" (perject-project-to-string proj)))
-	(run-hook-with-args 'perject-tab-create-hook proj)))
+	;; When the current project had no tabs and we created one, we need to update the "current"
+	;; index of all frames displaying the project to 1.
+	(let ((frame (or frame (selected-frame))))
+	  (when (eq index 0)
+		(dolist (f (perject-get-frames proj))
+		  (unless (eq f frame)
+			(perject-tab-set-index 'current 1 proj f))))
+	  (when msg
+		(message "Created tab for project '%s'" (perject-project-to-string proj)))
+	  (run-hook-with-args 'perject-tab-create-hook proj frame))))
 
 (defun perject-tab-delete (&optional proj frame msg)
   "Delete the current tab within frame FRAME belonging to the project PROJ.
@@ -297,31 +304,47 @@ After deleting the tab, this function runs the hook
   (let* ((proj (or proj (perject-assert-project frame)))
 		 (tabs (perject-tab-assert-tabs proj))
 		 (length (length tabs))
-		 (index (perject-tab-index 'current proj frame))
-		 (recent (perject-tab-index 'recent proj frame)))
+		 (index (perject-tab-index 'current proj frame)))
 	;; Remove the tab from the list.
 	(if (eq index 1)
 		(setcdr (assoc proj perject-tab--tabs) (cdr tabs))
 	  (setf (nthcdr (1- index) tabs) (nthcdr index tabs)))
-	;; Update the recent index.
-	(cond
-	 ((eq recent index)
-	  (setq recent nil))
-	 ((and recent (> recent index))
-	  (setq recent (1- recent))))
-	;; Update the current index.
-	(if (and recent (memq perject-tab-index-after-delete '(recent-next recent-previous)))
-		(progn (perject-tab-set-index 'current recent proj frame)
-			   (setq recent nil))
-	  (when (memq perject-tab-index-after-delete '(previous recent-previous))
-		(perject-tab-set-index 'current (perject-tab-previous-index index (1- length)) proj frame)))
-	(perject-tab-set-index 'recent recent proj frame)
-	(when (and perject-tab-switch-after-delete
-			   (perject-tab-index 'current proj frame))
-	  (perject-tab-switch (perject-tab-index 'current proj frame)))
+	;; Compute the current and recent index for all frames, unless they have no
+	;; current index for the project.
+	(dolist (f (frame-list))
+	  (when-let ((current (perject-tab-index 'current proj f)))
+		(let ((recent (perject-tab-index 'recent proj f)))
+		  (when recent
+			(if (> recent index)
+				(setq recent (1- recent))
+			  (when (eq recent index) (setq recent nil))))
+		  ;; Compute the new current index in the frame.
+		  ;; If the frame is currently displaying the deleted tab, switch to a
+		  ;; different one if desired.
+		  (if (eq current index)
+			  (progn
+				(if (and recent (memq perject-tab-index-after-delete '(recent-next recent-previous)))
+					(setq current recent recent nil)
+				  (setq current
+						(if (memq perject-tab-index-after-delete '(previous recent-previous))
+							(perject-tab-previous-index current (1- length))
+						  (perject-tab-next-index (1- current) (1- length)))))
+				;; The current index of the frame is the one being deleted, but
+				;; we need to also ensure that it has the correct project.
+				(if (and current (equal (perject-current f) proj)
+						 perject-tab-switch-after-delete)
+					  (with-selected-frame f
+						(perject-tab-switch current 'ignore))
+				  (perject-tab-set-index 'current current proj f)))
+			(when (> current index)
+			  (perject-tab-set-index 'current (1- current) proj f)))
+		  (perject-tab-set-index 'recent
+								 (and (not (eq recent (perject-tab-index 'current proj f)))
+									  recent)
+								 proj f))))
 	(when msg
 	  (message "Deleted tab of project '%s'" (perject-project-to-string proj)))
-	(run-hook-with-args 'perject-tab-delete-hook proj)))
+	(run-hook-with-args 'perject-tab-delete-hook proj (or frame (selected-frame)))))
 
 (defun perject-tab-cycle-state (num &optional proj msg)
   "Cycle the \"mutable\" state of the tab of project PROJ at index NUM.
@@ -563,17 +586,9 @@ SYMBOL may be 'current or 'recent, which references the current or most recent
 index of FRAME, respectively. If FRAME is nil, use the current frame.
 PROJ is a dotted pair with car a collection and cdr a project name.
 It may also be nil, in which case it defaults to the current project."
-  (let* ((proj (or proj (perject-current)))
-		 (index
-		  (funcall (if (eq symbol 'current) #'car #'cdr)
-				   (alist-get proj (frame-parameter frame 'perject-tab) nil nil #'equal)))
-		 (length (length (perject-tab-tabs proj))))
-	(when (and (numberp index) (> length 0))
-	  (if (> index length)
-		  (progn
-			(warn "Index too large")
-			(setf index length))
-		index))))
+  (let ((proj (or proj (perject-current))))
+	(funcall (if (eq symbol 'current) #'car #'cdr)
+			 (alist-get proj (frame-parameter frame 'perject-tab) nil nil #'equal))))
 
 (defun perject-tab-set-index (symbol num &optional proj frame)
   "Set the index of SYMBOL to NUM for project PROJ in the frame FRAME.
@@ -582,11 +597,10 @@ index of FRAME, respectively. NUM is a number or nil, in which case the
 respective index is set to that value. If FRAME is nil, use the current frame.
 PROJ is a dotted pair with car a collection and cdr a project name.
 It may also be nil, in which case it defaults to the current project."
-  (let* ((proj (or proj (perject-current frame)))
-		 (data (alist-get proj (frame-parameter frame 'perject-tab) nil nil #'equal)))
-	(if data
-		(setf (if (eq symbol 'current) (car data) (cdr data)) num)
-	  (push (list proj (cons (and (eq symbol 'current) num) (and (eq symbol 'recent) num)))
+  (let ((proj (or proj (perject-current frame))))
+	(if-let ((list (assoc proj (frame-parameter frame 'perject-tab))))
+		(setf (if (eq symbol 'current) (cadr list) (cddr list)) num)
+	  (push (cons proj (cons (and (eq symbol 'current) num) (and (eq symbol 'recent) num)))
 			(frame-parameter frame 'perject-tab)))))
 
 (defun perject-tab-state (num &optional proj)

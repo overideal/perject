@@ -419,9 +419,7 @@ creating the project."
 The functions are called with three arguments, namely the name of the collection
 to be closed, a list of all frames that belong to the collection or some project
 of it and have not been killed and a list containing all buffers that are
-associated with some project of this collection.
-Do not kill any of those frames or buffers in this hook. Use
-`perject-after-close-hook'for that purpose."
+associated with some project of this collection."
   :type 'hook)
 
 (defcustom perject-after-close-hook nil
@@ -437,9 +435,7 @@ associated with some project of this collection and that have not been killed."
 The functions are called with three arguments, namely the name of the collection
 to be reloaded, a list of all frames that belong to the collection or some
 project of it and have not been killed and a list containing all buffers that
-are associated with some project of this collection.
-Do not kill any of those frames or buffers in this hook. Use
-`perject-after-reload-hook'for that purpose."
+are associated with some project of this collection."
   :type 'hook)
 
 (defcustom perject-after-reload-hook nil
@@ -473,9 +469,7 @@ collection."
   "Hook run before perject deletes a project using `perject-delete'.
 The functions are called with three arguments, namely the name of the project to
 be deleted, a list of frames that currently display this project and a list
-containing all buffers that are currently associated with this project.
-Do not kill any of those frames or buffers in this hook. Use
-`perject-after-delete-project-hook' for that purpose."
+containing all buffers that are currently associated with this project."
   :type 'hook)
 
 (defcustom perject-after-delete-project-hook nil
@@ -938,7 +932,7 @@ If no new collection is created, run the hooks `perject-before-open-hook' and
 In interactive use, the user is asked for the collection name."
   (interactive
    (list
-	(perject--get-collection-name "Open collection: "
+	(perject--get-collection-name "Open collection (or create new one): "
 								  'inactive nil nil nil nil
 								  "No collection specified")))
   (when (perject-collection-p name 'active)
@@ -997,7 +991,8 @@ must have been replaced with their return values).
 
 This function runs the hooks `perject-before-close-hook' and
 `perject-after-close-hook'."
-  (run-hook-with-args 'perject-before-close-hook name (perject-get-buffers name) (perject-get-frames name))
+  (run-hook-with-args 'perject-before-close-hook name
+					  (perject-get-buffers name) (perject-get-frames name))
   ;; Recompute the buffers and frames after the hook, in case e.g. the hook
   ;; function killed any frames or buffers.
   (let ((buffers (perject-get-buffers name))

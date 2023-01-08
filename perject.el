@@ -417,9 +417,9 @@ creating the project."
 (defcustom perject-before-close-hook nil
   "Hook run before perject closes a collection using `perject-close'.
 The functions are called with three arguments, namely the name of the collection
-to be closed, a list of all frames that belong to the collection or some project
-of it and have not been killed and a list containing all buffers that are
-associated with some project of this collection."
+to be closed, the list of all frames that belong to the collection or some
+project of it and a list containing all buffers that are associated with some
+project of this collection."
   :type 'hook)
 
 (defcustom perject-after-close-hook nil
@@ -540,11 +540,11 @@ remaining entries are the corresponding project names.")
 Should not be modified by the user.")
 
 (defvar perject--desktop-reuse-frames nil
-  "Internal parameter for `perject-desktop-restore-frameset-advice'.
+  "Internal parameter for `perject--desktop-restore-frameset-advice'.
 Should not be modified by the user.")
 
 (defvar perject--desktop-cleanup-frames nil
-  "Internal parameter for `perject-desktop-restore-frameset-advice'.
+  "Internal parameter for `perject--desktop-restore-frameset-advice'.
 Should not be modified by the user.")
 
 (defvar perject--previous-collections nil
@@ -568,7 +568,7 @@ Should not be modified by the user.")
         (add-hook 'after-init-hook #'perject--init)
         (add-hook 'kill-emacs-hook #'perject--exit)
 
-		(advice-add 'desktop-restore-frameset :override #'perject-desktop-restore-frameset-advice)
+		(advice-add 'desktop-restore-frameset :override #'perject--desktop-restore-frameset-advice)
 
         (when after-init-time
           ;; This means the mode got enabled and the init phase is already over.
@@ -593,7 +593,7 @@ Should not be modified by the user.")
     (remove-hook 'after-init-hook #'perject--init)
     (remove-hook 'kill-emacs-hook #'perject--exit)
 	;; Remove the advice.
-	(advice-remove 'desktop-restore-frameset #'perject-desktop-restore-frameset-advice)
+	(advice-remove 'desktop-restore-frameset #'perject--desktop-restore-frameset-advice)
     (dolist (hook perject-auto-add-hooks)
       (remove-hook hook #'perject--auto-add-buffer))
 	;; Reset the frame title, but keep the information about which frame belongs
@@ -965,7 +965,8 @@ In interactive use, the user is asked for the collection name."
 	(perject-create name)
 	(pcase perject-switch-to-new-collection
 	  ('new (perject-create-new-frame name))
-	  ('t (perject-switch name)))))
+	  ('t (perject-switch name)))
+	(message "Created collection '%s'" name)))
 
 (defun perject-open-collection-in-new-instance (name)
   "Open a new Emacs instance for the collection named NAME.
@@ -999,7 +1000,7 @@ This function runs the hooks `perject-before-close-hook' and
 		(frames (perject-get-frames name))
 		buffers-to-kill)
     (if save
-		(perject-save-collection name t t)
+		(perject-save-collection name t)
 	  ;; If we don't save, we need to manually remove the lock file.
 	  (desktop-release-lock (file-name-as-directory (perject-get-collection-dir name))))
 	;; Remove the collection from the list of active collections.
@@ -1023,9 +1024,10 @@ This function runs the hooks `perject-before-close-hook' and
 		  (perject-set-current nil frame)))
 	  (when kill-frames (setq frames nil)))
 	(dolist (buffer buffers-to-kill)
-		(kill-buffer buffer))
+	  (kill-buffer buffer))
 	(setq buffers (cl-set-difference buffers buffers-to-kill))
-    (run-hook-with-args 'perject-after-close-hook name frames buffers)))
+    (run-hook-with-args 'perject-after-close-hook name frames buffers)
+	(message "Perject: Closed collection '%s'" name)))
 
 (defun perject-reload-collection (name kill-frames kill-buffers)
   "Reload the collection named NAME from its desktop file.
@@ -1736,44 +1738,50 @@ Does nothing to projects that are already associated with the buffer."
 (defun perject-desktop-load (name)
   "Using `desktop-read' load the collection named NAME from the corresponding desktop file.
 This function also adds NAME to the alist of active collections `perject-collections'."
-  (let ((desktop-var-serdes-funs
-		 (cons
-		  (list 'perject-buffer
-				nil
-				(lambda (projects)
-				  (append perject-buffer projects)))
-		  (mapcar (lambda (triple)
-					(list (car triple) (cadr triple) (apply-partially (-flip (caddr triple)) name)))
-				  (cl-remove-if-not #'listp perject-local-vars-to-save))))
-		(desktop-load-locked-desktop t)
-		;; `desktop-read' prints information about the loaded desktop file,
-		;; which we want to print ourselves. However, all other messages (e.g.
-		;; those printed by the modes loaded when restoring buffers) should be
-		;; visible. We also want to print any warnings (which in the code are
-		;; just messages) that `desktop-read' produces.
-		;; To silence `desktop-read' temporarily, we locally bind
-		;; `inhibit-message' and `message-log-max' and change them within
-		;; `desktop-after-read-hook'.
-		(inhibit-message inhibit-message)
-		(message-log-max message-log-max)
-		(desktop-after-read-hook
-		 (append desktop-after-read-hook
-				 (list (apply-partially #'perject-desktop-print-info name)))))
-	;; Unlike `desktop-save', `desktop-load' seems to have a weird
-	;; implementation, so we need the following line since otherwise desktop
-	;; thinks that it is loading the already loaded desktop again and refuses to
-	;; do so.
-	(setq desktop-dirname (file-name-as-directory (perject-get-collection-dir name)))
-	(desktop-read desktop-dirname))
-  ;; Change the frame title of the newly restored frames, if desired.
-  ;; The 'name' frame parameter in `frameset-filter-alist' is not restored by default.
-  ;; While we could change that setting, this would also influence other times when the user
-  ;; names the frame, so we instead just set the value when loading.
-  (when perject-frame-title-format
-	(dolist (frame perject--desktop-restored-frames)
-	  (set-frame-parameter frame 'name
-						   (funcall perject-frame-title-format (perject-current frame)))))
-  (run-hook-with-args 'perject-desktop-after-load-hook name))
+  ;; Locally bind `perject--previous-collections' so that
+  ;; `perject--desktop-info' can temporarily hijack it in order to save the
+  ;; message to be printed.
+  (let ((perject--previous-collections perject--previous-collections))
+	(let ((desktop-var-serdes-funs
+		   (cons
+			(list 'perject-buffer
+				  nil
+				  (lambda (projects)
+					(append perject-buffer projects)))
+			(mapcar (lambda (triple)
+					  (list (car triple) (cadr triple) (apply-partially (-flip (caddr triple)) name)))
+					(cl-remove-if-not #'listp perject-local-vars-to-save))))
+		  (desktop-load-locked-desktop t)
+		  ;; `desktop-read' prints information about the loaded desktop file,
+		  ;; which we want to print ourselves. However, all other messages (e.g.
+		  ;; those printed by the modes loaded when restoring buffers) should be
+		  ;; visible. We also want to print any warnings (which in the code are
+		  ;; just messages) that `desktop-read' produces.
+		  ;; To silence `desktop-read' temporarily, we locally bind
+		  ;; `inhibit-message' and `message-log-max' and change them within
+		  ;; `desktop-after-read-hook'.
+		  (inhibit-message inhibit-message)
+		  (message-log-max message-log-max)
+		  (desktop-after-read-hook
+		   (append desktop-after-read-hook
+				   (list (apply-partially #'perject--desktop-info name)))))
+	  ;; Unlike `desktop-save', `desktop-load' seems to have a weird
+	  ;; implementation, so we need the following line since otherwise desktop
+	  ;; thinks that it is loading the already loaded desktop again and refuses to
+	  ;; do so.
+	  (setq desktop-dirname (file-name-as-directory (perject-get-collection-dir name)))
+	  (desktop-read desktop-dirname))
+	;; Change the frame title of the newly restored frames, if desired.
+	;; The 'name' frame parameter in `frameset-filter-alist' is not restored by default.
+	;; While we could change that setting, this would also influence other times when the user
+	;; names the frame, so we instead just set the value when loading.
+	(when perject-frame-title-format
+	  (dolist (frame perject--desktop-restored-frames)
+		(set-frame-parameter frame 'name
+							 (funcall perject-frame-title-format (perject-current frame)))))
+	(run-hook-with-args 'perject-desktop-after-load-hook name)
+	(when (stringp perject--previous-collections)
+	  (message perject--previous-collections))))
 
 (defun perject-desktop-save (name &optional release-lock msg)
   "Using `desktop-save' save the collection named NAME to the corresponding desktop file.
@@ -1850,17 +1858,33 @@ message after saving the collection."
 	  (desktop-save (file-name-as-directory
 					 (perject-get-collection-dir name))
 					release-lock)))
-  (when msg (message "Perject: Saved collection %s" name)))
+  (when msg (message "Perject: Saved collection '%s'" name)))
 
-(defun perject-desktop-print-info (name)
-  "Print information about the collection named NAME that was just restored.
+(defun perject-desktop-load-global-variable (sym value name)
+  "Set the global variable SYM to VALUE for the collection named NAME.
+This is achieved using the deserializer as specified in
+`perject-global-vars-to-save'."
+  (if (eq sym 'perject-collections)
+	  ;; If the variable is `perject-collections', add the new collection and its projects to it.
+	  (push value perject-collections)
+	(let ((deserializer (cadr (alist-get sym perject-global-vars-to-save))))
+	  (if (functionp deserializer)
+		  (set sym (funcall deserializer value name))
+		(warn "No deserializer found for symbol '%s' in desktop file of collection
+		  '%s'. Check `perject-global-vars-to-save'" sym name)))))
+
+;; Printing the message directly within this function does not give the desired result,
+;; so we temporarily overwrite `perject--previous-collections'.
+(defun perject--desktop-info (name)
+  "Generate information about the collection named NAME that was just restored.
 This also sets `inhibit-message' and `message-log-max' (which were locally bound
 when this function is called).
 Never call this function manually."
   ;; Code adapted from `desktop-read'.
   ;; We access the variables from `desktop-read'.
   (let ((projects (mapcar #'cdr (perject-get-projects name))))
-	(message "Perject: collection '%s'%s: %s%s%d buffer%s restored%s%s."
+	(setq perject--previous-collections
+	 (format "Perject: Restored collection '%s'%s: %s%s%d buffer%s%s%s."
 			 name
 			 (if projects
 				 (concat " (" (string-join projects ", ") ")") "")
@@ -1881,23 +1905,10 @@ Never call this function manually."
 			 (if desktop-buffer-args-list
 				 (format ", %d to restore lazily"
 						 (length desktop-buffer-args-list))
-			   "")))
+			   ""))))
   (setq inhibit-message t message-log-max nil))
 
-(defun perject-desktop-load-global-variable (sym value name)
-  "Set the global variable SYM to VALUE for the collection named NAME.
-This is achieved using the deserializer as specified in
-`perject-global-vars-to-save'."
-  (if (eq sym 'perject-collections)
-	  ;; If the variable is `perject-collections', add the new collection and its projects to it.
-	  (push value perject-collections)
-	(let ((deserializer (cadr (alist-get sym perject-global-vars-to-save))))
-	  (if (functionp deserializer)
-		  (set sym (funcall deserializer value name))
-		(warn "No deserializer found for symbol '%s' in desktop file of collection
-		  '%s'. Check `perject-global-vars-to-save'" sym name)))))
-
-(defun perject-desktop-restore-frameset-advice ()
+(defun perject--desktop-restore-frameset-advice ()
   "Like `desktop-restore-frameset', but allow for more parameters from `frameset-restore'.
 Namely, the variables `perject--desktop-reuse-frames' and
 `perject--desktop-cleanup-frames' may be nil or a function as described at

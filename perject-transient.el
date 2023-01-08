@@ -4,7 +4,11 @@
 ;;; Commentary:
 
 ;; Provides a user interface to core commands of perject using transient.el.
-;; This includes commands for closing, reloading and deleting collections.
+;; This includes commands for:
+;; - closing collections,
+;; - reloading collections,
+;; - deleting collections and projects,
+;; - sorting (reordering) collections and projects.
 
 
 ;;; Code:

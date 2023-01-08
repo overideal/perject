@@ -242,7 +242,7 @@ the project and the index being toggled."
                 (cdr (last mode-line-misc-info))))
 		(add-to-list 'perject-global-vars-to-save
 					 '(perject-tab--tabs perject-tab--serialize-tabs perject-tab--deserialize-tabs))
-		(add-hook 'perject-desktop-after-load-hook #'perject-tab--regenerate)
+		(add-hook 'perject-desktop-after-load-hook #'perject-tab--init)
 		(add-hook 'perject-rename-hook #'perject-tab--rename)
 		;; This hook also covers the case that an active collection is deleted.
 		(add-hook 'perject-after-close-hook #'perject-tab--close-or-delete)
@@ -251,7 +251,7 @@ the project and the index being toggled."
 
 	;; Remove the added hooks etc.
 	(setq perject-global-vars-to-save (delete '(perject-tab--tabs perject-tab--serialize-tabs perject-tab--deserialize-tabs) perject-global-vars-to-save))
-	(remove-hook 'perject-desktop-after-load-hook #'perject-tab--regenerate)
+	(remove-hook 'perject-desktop-after-load-hook #'perject-tab--init)
 	(remove-hook 'perject-rename-hook #'perject-tab--rename)
 	(remove-hook 'perject-after-close-hook #'perject-tab--close-or-delete)
 	(remove-hook 'perject-after-delete-project-hook #'perject-tab--close-or-delete)
@@ -724,13 +724,21 @@ This function ignores the window positions and whether the same buffer is displa
 ;; configuration wc) is missing. We thus regenerate the tabs "on demand" (i.e.
 ;; after having switched to it) in `perject-tab-switch' (which see), so we need
 ;; to do it manually for the "starting indices" (i.e. the current ones).
-(defun perject-tab--regenerate (name)
-  "Regenerate the current tabs of all frames."
+;; This also updates the tab according to its state. We have to use
+;; `perject-tab-switch' instead of just `perject-tab-set', because the frame
+;; saved by desktop is restored with its previous window configuration. If there
+;; is e.g. an immutabe tab, we need to "reset" the window configuration to that
+;; of the tab.
+;; In case multiple frames show the same tab of the same project, the order of
+;; the frames in the list matters.
+(defun perject-tab--init (name)
+  "Regenerate the current tabs of all frames belonging to a project of the collection named NAME."
   (dolist (proj (perject-get-projects name))
 	(when (perject-tab-tabs proj)
 	  (dolist (frame (perject-get-frames proj))
 		(if-let ((current (perject-tab-index 'current proj frame)))
-			(perject-tab-set current frame proj)
+			(with-selected-frame frame
+			  (perject-tab-switch current))
 		  (warn "Frame belonging to project '%s' has no current index"
 				(perject-project-to-string proj)))))))
 

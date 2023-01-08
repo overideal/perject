@@ -64,7 +64,7 @@ The corresponding entry is only shown if `perject-tab' is loaded.")
   :type 'directory)
 
 (defcustom perject-switch-to-new-collection 'new
-  "Whether and how to switch to a newly created collection within `perject-open-collection'.
+  "Whether and how to switch to a newly created collection within `perject-open'.
 
 It may have one of the following values:
 - nil: Do not switch to the newly created collection.
@@ -163,19 +163,19 @@ write a custom function to manually raise and focus a frame.
 
 This variable may have one of the following values:
 - nil: Do not perform any manual raising or focusing.
-- 'open: Raise and focus the frame first restored by `perject-open-collection'.
+- 'open: Raise and focus the frame first restored by `perject-open'.
 - 'init: Raise and focus the first frame of the collection that was last
   restored at startup.
-- t: Raise and focus the frame in both `perject-open-collection' and at
+- t: Raise and focus the frame in both `perject-open' and at
   startup."
   :type '(set
 		  (const :tag "Do not perform any manual raising or focusing" nil)
 		  (const :tag "Raise and focus the frame first restored by
-		  `perject-open-collection'" open)
+		  `perject-open'" open)
 		  (const :tag "Raise and focus the first frame of the collection that
 		  was last restored at startup" init)
 		  (const :tag "Raise and focus the frame in both
-		  `perject-open-collection' and at startup" t)))
+		  `perject-open' and at startup" t)))
 
 (defcustom perject-messages
   '(save add-buffer remove-buffer next-collection previous-collection next-project previous-project)
@@ -184,7 +184,7 @@ This variable may have one of the following values:
 The value of this variable is a list which may contain any of the following
 symbols, whose presence in the list leads to a message being printed in the
 indicated command:
-- 'save: `perject-save-collection'
+- 'save: `perject-save'
 - 'add-buffer: `perject-add-buffer-to-project',
 - 'remove-buffer: `perject-remove-buffer-from-project',
 - 'switch: `perject-switch',
@@ -193,7 +193,7 @@ indicated command:
 - 'next-project: `perject-next-project',
 - 'previous-project: `perject-previous-project'."
   :type '(set
-		  (const :tag "`perject-save-collection'" save)
+		  (const :tag "`perject-save'" save)
 		  (const :tag "`perject-add-buffer-to-project'" add-buffer)
 		  (const :tag "`perject-remove-buffer-from-project'" remove-buffer)
 		  (const :tag "`perject-switch'" switch)
@@ -377,7 +377,7 @@ project, the newly switched to collection or project and the frame."
   :type 'hook)
 
 (defcustom perject-before-open-hook nil
-  "Hook run before perject opens a collection using `perject-open-collection'.
+  "Hook run before perject opens a collection using `perject-open'.
 In particular, the projects, buffers and frames belonging to the collection have
 not yet been restored.
 The functions are called with one argument, namely the name of the collection to
@@ -385,7 +385,7 @@ be opened."
   :type 'hook)
 
 (defcustom perject-after-open-hook nil
-  "Hook run after perject has opened a collection using `perject-open-collection'.
+  "Hook run after perject has opened a collection using `perject-open'.
 In particular, the projects, buffers and frames belonging to the collection have
 been restored.
 The functions are called with one argument, namely the name of the newly opened
@@ -394,7 +394,7 @@ project."
 
 (defcustom perject-before-create-hook nil
   "Hook run before perject creates a new collection or project'.
-This influences the commands `perject-switch' and `perject-open-collection'.
+This influences the commands `perject-switch' and `perject-open'.
 The functions are called with one argument, which is either a string
 representing the name of the new collection or a dotted pair representing the
 new project.
@@ -405,7 +405,7 @@ creating the project."
 
 (defcustom perject-after-create-hook nil
   "Hook run after perject has created a new collection or project.
-This influences the commands `perject-switch' and `perject-open-collection'.
+This influences the commands `perject-switch' and `perject-open'.
 The functions are called with one argument, which is either a string
 representing the name of the new collection or a dotted pair representing the
 new project.
@@ -679,7 +679,7 @@ selected and focused is determined by `perject-raise-and-focus-frame'."
 		(if starting-frame-claimed
 			;; Starting frame was claimed.
 			(let (perject-before-open-hook perject-after-open-hook)
-			  (perject-open-collection name))
+			  (perject-open name))
 		  (perject-desktop-load name))))
     ;; Add the hooks specified in `perject-auto-add-hooks'.
     (dolist (hook perject-auto-add-hooks)
@@ -707,7 +707,7 @@ This function is called by `perject-mode' before exiting Emacs (using
 			((pred functionp) (funcall perject-save-on-exit
 									   perject--previous-collections
 									   cols)))))
-	(perject-save-collection cols-to-save t (memq 'save perject-messages))
+	(perject-save cols-to-save t (memq 'save perject-messages))
 	;; Reverse the list of active collections, so that when restoring the
 	;; collections in the next section the order of the resulting list is the same
 	;; as before.
@@ -728,7 +728,7 @@ collection and cdr a project name."
 		;; be at the rightmost position.
 		(setq perject-collections (append perject-collections (list (list proj))))
 		;; Create a desktop file.
-		(perject-save-collection proj))
+		(perject-save proj))
 	;; If the corresponding collection does not exist yet, create it.
 	(unless (perject-collection-p (car proj))
 	  (perject-create (car proj)))
@@ -901,7 +901,7 @@ This function runs the hooks `perject-before-delete-project-hook' and
 
 ;;;; Opening, Closing and Saving
 
-;; The `perject-open-collection' command is very subtle, due to the following:
+;; The `perject-open' command is very subtle, due to the following:
 ;; When loading a desktop, `desktop.el' selects the loaded buffers in the
 ;; currently selected frame. This will not only mess up the window configuration
 ;; but also due to the various hooks alter the list of buffers belonging to
@@ -916,7 +916,7 @@ This function runs the hooks `perject-before-delete-project-hook' and
 ;; In particular, the alternative approach would lead to "Buffer is already
 ;; associated with project" errors, if the project in which this function is
 ;; called is already associated with the buffer.
-(defun perject-open-collection (name)
+(defun perject-open (name)
   "Create or open the collection named NAME.
 This means that all projects that belonged to the collection are restored from
 the corresponding desktop file. Furthermore, this function switches to one of
@@ -968,7 +968,7 @@ In interactive use, the user is asked for the collection name."
 	  ('t (perject-switch name)))
 	(message "Created collection '%s'" name)))
 
-(defun perject-open-collection-in-new-instance (name)
+(defun perject-open-in-new-instance (name)
   "Open a new Emacs instance for the collection named NAME.
 This means that a new Emacs process is created and in it, the collection is loaded.
 In interactive use, the user is asked for the collection name."
@@ -1000,7 +1000,7 @@ This function runs the hooks `perject-before-close-hook' and
 		(frames (perject-get-frames name))
 		buffers-to-kill)
     (if save
-		(perject-save-collection name t)
+		(perject-save name t)
 	  ;; If we don't save, we need to manually remove the lock file.
 	  (desktop-release-lock (file-name-as-directory (perject-get-collection-dir name))))
 	;; Remove the collection from the list of active collections.
@@ -1052,7 +1052,7 @@ This function runs the hooks `perject-before-reload-hook' and
 		  (apply-partially (-flip #'member) frames))
 		 unused-frames)
 	(perject-close-collection name nil nil kill-buffers)
-	(perject-open-collection name)
+	(perject-open name)
 	(setq buffers (cl-remove-if-not #'buffer-live-p buffers)
 		  unused-frames (cl-set-difference frames perject--desktop-restored-frames))
 	;; Deal with the frames that were not reused.
@@ -1067,7 +1067,7 @@ This function runs the hooks `perject-before-reload-hook' and
 	(setq frames (cl-remove-if-not #'frame-live-p frames))
 	(run-hook-with-args 'perject-after-reload-hook name frames buffers)))
 
-(defun perject-save-collection (name &optional release-lock msg)
+(defun perject-save (name &optional release-lock msg)
   "Save the collection named NAME.
 NAME may also be a list of collections, in which case every collection in the
 list is saved.

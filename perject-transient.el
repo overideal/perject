@@ -334,6 +334,19 @@ instead."
 		(perject--choose-collection)
 	  (perject--choose-project))))
 
+;;;###autoload
+(defun perject-open-close-or-reload ()
+  "Open, close or reload a collection.
+Without a prefix argument, open a collection. With a single prefix argument,
+close an active collection and in any other case, reload an active collection.
+This command is intended for interactive use."
+  (interactive)
+  (call-interactively
+   (pcase current-prefix-arg
+	 ('nil #'perject-open)
+	 ('(4) #'perject-close)
+	 (_ #'perject-reload))))
+
 ;;;###autoload (autoload 'perject-sort-collections "perject-transient" nil t)
 (transient-define-prefix perject-sort-collections ()
   "Transient menu to sort the active collections.
@@ -388,6 +401,16 @@ This is for example useful to influence the order used for
    ("n" "Select the next project" perject--sort-projects-next :transient t)
    ("p" "Select the previous project" perject--sort-projects-previous :transient t)])
 
+;;;###autoload
+(defun perject-sort ()
+  "Sort the active collections or the projects of the current collection.
+Without a prefix argument, sort the collections and sort the projects of the
+current collection otherwise."
+  (interactive)
+  (if current-prefix-arg
+	  (perject-sort-projects)
+	(perject-sort-collections)))
+
 
 ;;;; Helper Functions
 
@@ -419,7 +442,12 @@ This is for example useful to influence the order used for
   (unless (memq transient-current-command '(perject-close perject-reload perject-delete))
 	(user-error "This function may only be called within transient"))
   (let ((name (perject--get-collection-name
-			   "Select collection: " (if (eq transient-current-command 'perject-delete) 'all 'active)
+			   (format "%s collection: "
+					   (pcase transient-current-command
+						 ('perject-close "Close")
+						 ('perject-reload "Reload")
+						 ('perject-delete "Delete")))
+			   (if (eq transient-current-command 'perject-delete) 'all 'active)
 			   nil t (car (perject-current))
 			   "There currently is no collection"
 			   "No collection specified"))

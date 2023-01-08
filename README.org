@@ -42,13 +42,13 @@ to obtain the current project name (which might be nil).
 ** Issues
 Whether /perject/ raises and focuses a frame in certain situations depends on the value of the variable
 /perject-raise-and-focus-frame/. In that case, the function /select-frame-set-input-focus/ is used to raise and focus
-a frame in /perject-open-collection/ and at startup.
+a frame in /perject-open/ and at startup.
 However, depending on the window manager, there might be some weird behaviors with Emacs not focusing the frame properly.
 A value of /t/ for this variable works best for *KDE Plasma*, which I use. If the variable is /nil/, the old frame stays
 at the "front" (my Emacs is always maximized) but the focus is on the newly restored frame "behind" it.
 I suspect that the behavior depends on the used window manager and as such I added the above variable in order
 to disable the default behavior.
-By setting it to /nil/, the user can supply a custom function (add it to /perject-open-collection/ and /perject-after-init-hook/).
+By setting it to /nil/, the user can supply a custom function (add it to /perject-open/ and /perject-after-init-hook/).
 
 ** Display Mode Line Information
 Perject provides two mode line constructs.

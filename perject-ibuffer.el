@@ -8,7 +8,7 @@
 ;; from projects in the ibuffer interface.
 
 
-;;;  Code:
+;;; Code:
 
 (require 'perject)
 (require 'ibuffer)
@@ -23,15 +23,17 @@
   :prefix "perject-ibuffer-")
 
 (defcustom perject-ibuffer-buffer-to-project-message t
-  "If non-nil, print a message when adding or removing a buffer from a project in `ibuffer'.
-This influences the commands `perject-ibuffer-add-to-project' and
+  "If non-nil, print a message when adding a buffer from a project in `ibuffer'.
+This also influences removing buffers from a project in `ibuffer'.
+The commands affected are `perject-ibuffer-add-to-project' and
 `perject-ibuffer-remove-from-project'."
   :type '(choice
 		  (const :tag "Print message" t)
 		  (const :tag "Don't print message" nil)))
 
 (defcustom perject-ibuffer-update-after-buffer-to-project t
-  "If non-nil, update the ibuffer list after adding or removing a buffer from a project in `ibuffer'.
+  "If non-nil, update ibuffer after adding a buffer from a project in `ibuffer'.
+The update also happens when removing buffers from a project in `ibuffer'.
 This influences the commands `perject-ibuffer-add-to-project' and
 `perject-ibuffer-remove-from-project'."
   :type '(choice

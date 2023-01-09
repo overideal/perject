@@ -1,6 +1,6 @@
-;;; perject.el - Session-persistent project management -*- lexical-binding: t -*-
+;;; perject.el --- Session-persistent project management -*- lexical-binding: t -*-
 
-;; Copyright (C) 2022 Free Software Foundation, Inc.
+;; Copyright (C) 2022, 2023 overideal
 
 ;; Author: overideal
 ;; Maintainer: overideal
@@ -38,29 +38,14 @@ Write '--perject \"\"' if no projects should be opened.")
 ;;;; Customization
 
 (defgroup perject nil
-  "Session-persistent project management"
+  "Session-persistent project management."
   :group 'convenience
   :prefix "perject-")
 
-(defface perject-mode-line-face '((t :foreground "dark orange"))
-  "The face used by the mode line indicator of perject.")
-
-(defface perject-project-annotator-main '((t :inherit font-lock-keyword-face))
-  "The face used for displaying the main annotation when selecting a project.")
-
-(defface perject-project-annotator-buffers '((t :inherit completions-annotations))
-  "The face used for displaying the number of buffers when selecting a collection or project.")
-
-(defface perject-project-annotator-tabs '((t :inherit completions-annotations))
-  "The face used for displaying the number of tabs when selecting a collection or project.
-The corresponding entry is only shown if `perject-tab' is loaded.")
-
-(defface perject-project-annotator-frames '((t :inherit completions-annotations))
-  "The face used for displaying the number of frames when selecting a collection or project.")
-
 (defcustom perject-directory
   (file-name-as-directory (concat user-emacs-directory "perject"))
-  "The directory used by perject to save its data (in particular the desktop files)."
+  "The directory used by perject to save its data.
+This in particular includes the desktop files."
   :type 'directory)
 
 (defcustom perject-switch-to-new-collection 'new
@@ -70,7 +55,7 @@ It may have one of the following values:
 - nil: Do not switch to the newly created collection.
 - 'new: Switch to the newly created collection in a new frame.
 - t: Switch to the newly created collection within the selected frame."
-  :type '(set
+  :type '(choice
 		  (const :tag "Do not switch to the newly created collection" nil)
 		  (const :tag "Switch to the newly created collection in a new frame" new)
 		  (const :tag "Switch to the newly created collection within the selected frame" t)))
@@ -92,21 +77,30 @@ It may have one of the following values:
   collections. The function should return a list of collection names to be
   loaded. It could for example ask the user.
 
-The order in which the collections are loaded is determined as follows: In the list
-or function case, the collections are loaded \"from left to right\".
-If the value is 'previous, use the current order of the collections, which by default
+The order in which the collections are loaded is determined as follows: In the
+list or function case, the collections are loaded \"from left to right\". If the
+value is 'previous, use the current order of the collections, which by default
 goes from \"older\" to \"newer\". Using the command `perject-sort-collections',
-they can be manually sorted, which will be remembered over restarts of Emacs."
+they can be manually sorted, which will be remembered over restarts of Emacs.
+
+In order for the 'previous option to work properly, add the following line to
+your Emacs configuration file:
+\(add-to-list 'savehist-additional-variables 'perject--previous-collections)."
   :type '(choice
 		  (const :tag "Load no collection" nil)
 		  (const :tag "Load all collections" all)
 		  (repeat :tag "Load the specified collections (if existent)"
 				  (choice string (const not)))
 		  (const :tag "Load previously open collections" previous)
-		  (function :tag "Custom function")))
+		  (function :tag "Custom function"))
+  :set (lambda (symbol value)
+		 (set-default symbol value)
+		 (when (eq value 'previous)
+		   (savehist-mode 1)
+		   (add-to-list 'savehist-additional-variables 'perject--previous-collections))))
 
 (defcustom perject-save-on-exit 'all
-  "The variable controls which collections are automatically saved when exiting Emacs.
+  "The collections to automatically save when exiting Emacs.
 
 It may have one of the following values:
 - nil: Don't save any collections.
@@ -129,7 +123,7 @@ It may have one of the following values:
 (defcustom perject-save-frames '(t)
   "Whether saving a collection will also save the frames associated with it.
 The value of the variable must be a list, which is of the following form:
-(default (name . value) ...)
+\(default (name . value) ...)
 
 The first element serves as the default value. If it is nil, the frames
 belonging to the collections are not saved to their desktop files. If it is
@@ -233,13 +227,13 @@ By default, the function `perject-frame-title' is used."
 		  (function :tag "Custom function")))
 
 (defcustom perject-reuse-starting-frame t
-  "Whether perject should reuse the starting frame when loading collections at startup.
+  "Whether perject should reuse the frame when loading collections at startup.
 When starting Emacs, a single frame is produced. If this variable is non-nil,
 that frame will be reused when the first collection that has at least one frame
 is loaded. If this variable is nil, that frame is not altered."
   :type '(choice
-		  (const :tag "Reuse starting frame" t)
-		  (const :tag "Don't reuse starting frame" nil)))
+		  (const :tag "Reuse original frame" t)
+		  (const :tag "Don't reuse original frame" nil)))
 
 (defcustom perject-global-vars-to-save nil
   "A list of global variables saved and restored by perject for every collection.
@@ -250,10 +244,10 @@ the value of the variable is overwritten. This means that the value is
 determined by the last collection loaded.
 
 An entry may alternatively be a a list with three elements:
-(var serializer deserializer).
+\(var serializer deserializer).
 
 The first entry is the variable to be saved. The second entry is a function
-(\"serializer\") that is called when a collection is saved to its desktop file.
+\(\"serializer\") that is called when a collection is saved to its desktop file.
 The serializer is supplied with the current value of the variable and the name
 of the collection being saved. Its return value is saved to the desktop file.
 The deserializer is called when a collection is loaded from its desktop file.
@@ -278,7 +272,7 @@ The entries of the list are of the same form as those in
 				  variable)))
 
 (defcustom perject-buffers-predicate nil
-  "Function identifying buffers that are not saved to the desktop file of a collection.
+  "Function identifying buffers not to save to the desktop file of a collection.
 By default, when saving a collection, all buffers belonging to the collection
 are saved. This variable can be used to only save a subset of those buffers. If
 this variable is nil, no additional filtering takes place.
@@ -291,7 +285,7 @@ For convenience, the buffer list can be further filtered using the variables
   :type '(choice function (const nil)))
 
 (defcustom perject-frames-predicate nil
-  "Function identifying frames that are not saved to the desktop file of a collection.
+  "Function identifying frames not to save to the desktop file of a collection.
 Depending on the value of `perject-save-frames', when saving a collection,
 either all frames belonging to the collection are saved or no frames are saved.
 This variable can be used to only save a subset of those frames. If this
@@ -301,7 +295,7 @@ nil if the frame should not be saved."
   :type '(choice function (const nil)))
 
 (defcustom perject-auto-add-function nil
-  "A function used to control which buffers are automatically associated with projects.
+  "Function controlling which buffers are automatically associated with projects.
 When a hook in `perject-auto-add-hooks' runs, this function is called in order
 to decide to which projects the current buffer should be added to.
 It is called with two arguments. The first argument is the current buffer. The
@@ -316,7 +310,7 @@ majority of use cases, the value nil should suffice."
   :type '(choice function (const nil)))
 
 ;; There is no hook that is run after an arbitrary buffer is created.
-;; See: https://stackoverflow.com/questions/7899949/is-there-an-emacs-hook-that-runs-after-every-buffer-is-created
+;; See https://stackoverflow.com/questions/7899949/is-there-an-emacs-hook-that-runs-after-every-buffer-is-created.
 (defcustom perject-auto-add-hooks '(find-file-hook clone-indirect-buffer-hook dired-mode-hook)
   "A list of hooks in which the current buffer is added to the current project.
 This is used to automatically add newly created buffers to the current project.
@@ -326,7 +320,7 @@ The following hooks could be interesting to the user:
 Modifcations of this variable only take effect after (re)enabling
 `perject-mode'.
 Internally, the function `perject--auto-add-buffer' is used."
-  :type '(list variable))
+  :type '(repeat variable))
 
 (defcustom perject-project-format "%s|%s"
   "How to print projects and their respective collections in text.
@@ -365,15 +359,17 @@ first)."
   :type 'hook)
 
 (defcustom perject-before-switch-hook nil
-  "Hook run before perject has switched project or collection using `perject-switch'.
-The functions are called with three arguments: the original collection or
-project, the collection or project that will be switched to and the frame."
+  "Hook run before perject has switched project or collection.
+This affects the command `perject-switch'. The functions are called with three
+arguments: the original collection or project, the collection or project that
+will be switched to and the frame."
   :type 'hook)
 
 (defcustom perject-after-switch-hook nil
-  "Hook run after perject has switched project or collection using `perject-switch'.
-The functions are called with three arguments: the original collection or
-project, the newly switched to collection or project and the frame."
+  "Hook run after perject has switched project or collection.
+This affects the command `perject-switch'. The functions are called with three
+arguments: the original collection or project, the newly switched to collection
+or project and the frame."
   :type 'hook)
 
 (defcustom perject-before-open-hook nil
@@ -447,10 +443,10 @@ with some project of the collection before reloading and have not been killed."
   :type 'hook)
 
 (defcustom perject-rename-hook nil
-  "Hook run after perject has renamed a collection or project using `perject-rename'.
-The functions are called with two arguments, namely the old collection or
-project and the new one. The arguments are either both collection names or both
-dotted pairs representing projects."
+  "Hook run after perject has renamed a collection or project.
+This affects the command `perject-rename'. The functions are called with two
+arguments, namely the old collection or project and the new one. The arguments
+are either both collection names or both dotted pairs representing projects."
   :type 'hook)
 
 (defcustom perject-before-delete-collection-hook nil
@@ -493,6 +489,32 @@ argument."
   :type 'hook)
 
 
+;;;; Faces
+
+(defgroup perject-faces nil
+  "Faces used by perject."
+  :group 'perject
+  :group 'faces)
+
+(defface perject-mode-line-face '((t :foreground "dark orange"))
+  "The face used by the mode line indicator of perject.")
+
+(defface perject-project-annotator-main '((t :inherit font-lock-keyword-face))
+  "The face used for displaying the main annotation when selecting a project.")
+
+(defface perject-project-annotator-buffers '((t :inherit completions-annotations))
+  "The face used for displaying the number of buffers.
+This has an effect when selecting a collection or project.")
+
+(defface perject-project-annotator-tabs '((t :inherit completions-annotations))
+  "The face used for displaying the number of tabs.
+This has an effect when selecting a collection or project and only if
+`perject-tab' is loaded.")
+
+(defface perject-project-annotator-frames '((t :inherit completions-annotations))
+  "The face used for displaying the number of frames when selecting a collection or project.")
+
+
 ;;;; Internal Variables
 
 (defvar perject-mode-line-current
@@ -512,8 +534,8 @@ argument."
 			 (format "Current buffer is%s associated with current project '%s'\nmouse-1: Toggle"
 					 (if (perject-is-assoc-with (current-buffer) proj) "" " not")
 					 (perject-project-to-string proj)))))))
-  "Mode line construct to indicate if the current buffer belongs to the current project.
-It displays a dash (-) if there is no current project or the current buffer
+  "Mode line construct to indicate the relation between buffer and project.
+It displays a dash (-) if there is no current project or if the current buffer
 belongs to the current project and an asterix (*) otherwise.")
 
 (put 'perject-mode-line-current 'risky-local-variable t)
@@ -540,15 +562,12 @@ remaining entries are the corresponding project names.")
 Should not be modified by the user.")
 
 (defvar perject--desktop-reuse-frames nil
-  "Internal parameter for `perject--desktop-restore-frameset-advice'.
-Should not be modified by the user.")
-
-(defvar perject--desktop-cleanup-frames nil
-  "Internal parameter for `perject--desktop-restore-frameset-advice'.
+  "Internal parameter controlling whether frames are reused.
+Its value may be just like the parameter REUSE-FRAMES of `frameset-restore'.
 Should not be modified by the user.")
 
 (defvar perject--previous-collections nil
-  "Internal variable that stores the collections that were opened in the last session.
+  "Internal variable that stores the collections opened in the last session.
 Should not be modified by the user.")
 
 
@@ -567,8 +586,6 @@ Should not be modified by the user.")
 
         (add-hook 'after-init-hook #'perject--init)
         (add-hook 'kill-emacs-hook #'perject--exit)
-
-		(advice-add 'desktop-restore-frameset :override #'perject--desktop-restore-frameset-advice)
 
         (when after-init-time
           ;; This means the mode got enabled and the init phase is already over.
@@ -592,8 +609,6 @@ Should not be modified by the user.")
 	;; Remove the added hooks.
     (remove-hook 'after-init-hook #'perject--init)
     (remove-hook 'kill-emacs-hook #'perject--exit)
-	;; Remove the advice.
-	(advice-remove 'desktop-restore-frameset #'perject--desktop-restore-frameset-advice)
     (dolist (hook perject-auto-add-hooks)
       (remove-hook hook #'perject--auto-add-buffer))
 	;; Reset the frame title, but keep the information about which frame belongs
@@ -618,15 +633,16 @@ COL is the current collection and PROJ is the current project name."
   "Return a string for the frame title of a frame associated with PERJ.
 PROJ is a dotted pair with car a collection and cdr a project name.
 This function is used only if `perject-frame-title-format' is t."
-  (concat invocation-name "@" system-name ":" (car perj)
+  (concat invocation-name "@" (system-name) ":" (car perj)
 		  (when (cdr perj)
 			(concat "|" (cdr perj)))))
 
 (defun perject--init ()
-  "Load collections from the last session, set up hooks and select the last restored frame.
-The collections are stored in desktop files. The variable `perject-load-at-startup'
-determines which collections are loaded automatically. However, if specified, the
-command line option `perject-command-line-option' takes priority.
+  "Load collections from the last session and set up hooks.
+The collections are stored in desktop files. The variable
+`perject-load-at-startup' determines which collections are loaded automatically.
+However, if specified, the command line option `perject-command-line-option'
+takes priority.
 
 After starting Emacs there is a single frame; namely the selected \"starting
 frame\". It will be reused as the frame of a newly opened collection if
@@ -650,8 +666,8 @@ selected and focused is determined by `perject-raise-and-focus-frame'."
 	;; Read the command line arguments and filter non-existent collections.
 	;; We cannot use `command-switch-alist' since those functions are processed after `after-init-hook'.
 	(if-let ((index (cl-position perject-command-line-option command-line-args :test #'string-equal))
-			   (list (split-string (nth (1+ index) command-line-args) ","))
-			   (cols (-separate #'perject-collection-p list)))
+			 (list (split-string (nth (1+ index) command-line-args) ","))
+			 (cols (-separate #'perject-collection-p list)))
 		(progn
 		  (when (cadr cols)
 			(warn "Perject: The following collections do not exist: %s" (string-join (cadr cols) ", ")))
@@ -970,8 +986,8 @@ In interactive use, the user is asked for the collection name."
 
 (defun perject-open-in-new-instance (name)
   "Open a new Emacs instance for the collection named NAME.
-This means that a new Emacs process is created and in it, the collection is loaded.
-In interactive use, the user is asked for the collection name."
+This means that a new Emacs process is created and in it, the collection is
+loaded. In interactive use, the user is asked for the collection name."
   (interactive
    (list (perject--get-collection-name "Open collection in new instance: "
 							'inactive nil t nil
@@ -1283,7 +1299,7 @@ that."
 		 "No project specified")))
     (member 'add-buffer perject-messages)))
   (when (perject-is-assoc-with buffer proj)
-	(user-error "Buffer '%s' is already associated with project '%s'."
+	(user-error "Buffer '%s' is already associated with project '%s'"
                 (buffer-name buffer) (perject-project-to-string proj)))
   (with-current-buffer buffer
 	(push proj perject-buffer))
@@ -1329,7 +1345,7 @@ that."
 		 "No project specified")))
 	(member 'remove-buffer perject-messages)))
   (unless (perject-is-assoc-with buffer proj)
-	(user-error "Buffer '%s' is not associated with project '%s'."
+	(user-error "Buffer '%s' is not associated with project '%s'"
                 (buffer-name buffer) (perject-project-to-string proj)))
   (with-current-buffer buffer
 	(setq perject-buffer (delete proj perject-buffer)))
@@ -1376,7 +1392,8 @@ If FRAME is nil, it defaults to the selected frame."
 	  (set-frame-parameter frame 'name (and proj (funcall perject-frame-title-format proj))))))
 
 (defun perject-get-collection-dir (name)
-  "Return the directory belonging to a (possibly non-existent) collection with name NAME."
+  "Return the directory belonging to a collection named NAME.
+The collection and directory need not actually exist."
   (expand-file-name (concat (file-name-as-directory perject-directory) name)))
 
 (defun perject-get-collections (&optional scope)
@@ -1660,13 +1677,13 @@ specified name, an error is thrown."
            (and (>= char 97) (<= char 122)) ;; lowercase letter
            (member char perject-valid-naming-chars)
            (user-error
-			"The character '%c' is not valid for naming a collection. See the variable `perject-valid-naming-chars'."
+			"The character '%c' is not valid for naming a collection. See the variable `perject-valid-naming-chars'"
 			char)))
 	 name)
 	(when (string-empty-p name)
-      (user-error "The collection name cannot be empty."))
+      (user-error "The collection name cannot be empty"))
     (when (member name (perject-get-collections))
-      (user-error "There already is a collection named '%s'." name))
+      (user-error "There already is a collection named '%s'" name))
     name))
 
 (defun perject--get-new-project-name (collection prompt)
@@ -1687,20 +1704,22 @@ collection with the the specified name, an error is thrown."
            (and (>= char 97) (<= char 122)) ;; lowercase letter
            (member char perject-valid-naming-chars)
            (user-error
-			"The character '%c' is not valid for naming a projectn. See the variable `perject-valid-naming-chars'."
+			"The character '%c' is not valid for naming a projectn. See the variable `perject-valid-naming-chars'"
 			char )))
 	 name)
 	(when (string-empty-p name)
-      (user-error "The project name cannot be empty."))
+      (user-error "The project name cannot be empty"))
     (when (member name (mapcar #'cdr (perject-get-projects collection)))
-      (user-error "There already is a project named '%s' within this collection." name))
+      (user-error "There already is a project named '%s' within this collection" name))
     name))
 
 
 ;;;; Helper Functions
 
 (defun perject-mode-line-toggle-current-buffer (event)
-  "Toggle the association between the current buffer and the current project from the mode-line."
+  "Toggle the association between the buffer and the project from the mode-line.
+If the current buffer is associated with the current project, remove this
+association. Otherwise, add it."
   (interactive "e")
   (when-let ((proj (perject-current))
 			 ((car proj))
@@ -1710,9 +1729,9 @@ collection with the the specified name, an error is thrown."
 	  (perject-add-buffer-to-project buffer proj))))
 
 (defun perject--auto-add-buffer (&optional ignore)
-  "Silently add the current buffer to projects honoring `perject-auto-add-function'.
-If IGNORE is non-nil, simply add the current buffer to the current project;
-i.e. act as if `perject-auto-add-function' was nil.
+  "Silently add the current buffer to projects.
+This honors the variable `perject-auto-add-function' unless IGNORE is non-nil,
+in which case the current buffer is simply added to the current project.
 Does nothing to projects that are already associated with the buffer."
   (let ((buffer (current-buffer)))
 	(if (or ignore (not perject-auto-add-function))
@@ -1736,8 +1755,9 @@ Does nothing to projects that are already associated with the buffer."
 ;;;; Interface to desktop.el
 
 (defun perject-desktop-load (name)
-  "Using `desktop-read' load the collection named NAME from the corresponding desktop file.
-This function also adds NAME to the alist of active collections `perject-collections'."
+  "Load the collection named NAME from the corresponding desktop file.
+This includes adding NAME to the alist of active collections
+`perject-collections'."
   ;; Locally bind `perject--previous-collections' so that
   ;; `perject--desktop-info' can temporarily hijack it in order to save the
   ;; message to be printed.
@@ -1770,7 +1790,24 @@ This function also adds NAME to the alist of active collections `perject-collect
 	  ;; thinks that it is loading the already loaded desktop again and refuses to
 	  ;; do so.
 	  (setq desktop-dirname (file-name-as-directory (perject-get-collection-dir name)))
-	  (desktop-read desktop-dirname))
+	  ;; Make `desktop-restore-frameset' accept another parameter from
+	  ;; `frameset-restore', namely `perject--desktop-reuse-frames'.
+	  ;; The function also sets ;; `perject--desktop-restored-frames'.
+	  (cl-letf (((symbol-function 'desktop-restore-frameset)
+				 (lambda ()
+				   (when (desktop-restoring-frameset-p)
+					 ;; Reset `perject--desktop-restored-frames'.
+					 (setq perject--desktop-restored-frames nil)
+					 (frameset-restore
+					  desktop-saved-frameset
+					  :reuse-frames perject--desktop-reuse-frames
+					  ;; Use the cleanup to set the list of restored frames.
+					  :cleanup-frames (lambda (frame action)
+										(when (memq action '(:reused :created))
+										  (push frame perject--desktop-restored-frames)))
+					  :force-display desktop-restore-in-current-display
+					  :force-onscreen desktop-restore-forces-onscreen)))))
+	  (desktop-read desktop-dirname)))
 	;; Change the frame title of the newly restored frames, if desired.
 	;; The 'name' frame parameter in `frameset-filter-alist' is not restored by default.
 	;; While we could change that setting, this would also influence other times when the user
@@ -1784,7 +1821,7 @@ This function also adds NAME to the alist of active collections `perject-collect
 	  (message perject--previous-collections))))
 
 (defun perject-desktop-save (name &optional release-lock msg)
-  "Using `desktop-save' save the collection named NAME to the corresponding desktop file.
+  "Save the collection named NAME to the corresponding desktop file.
 If the optional argument RELEASE-LOCK is non-nil, Emacs will release the lock of
 the corresponding desktop file. If the optional argument MSG is non-nil, print a
 message after saving the collection."
@@ -1812,10 +1849,10 @@ message after saving the collection."
 		;; the value of `perject-buffers-predicate'.
 		(desktop-buffers-not-to-save-function
 		 (if perject-buffers-predicate
-			 (lambda (file-name buffer-name major-mode minor-modes)
+			 (lambda (file-name buffer-name major minors)
 			   (and (perject-is-assoc-with (get-buffer buffer-name) name)
 					(funcall perject-buffers-predicate
-							 name file-name buffer-name major-mode minor-modes)))
+							 name file-name buffer-name major minors)))
 		   (lambda (_ buffer-name _ _)
 			 (perject-is-assoc-with (get-buffer buffer-name) name))))
 		(save-frames (let* ((exception (assoc name (cdr perject-save-frames)))
@@ -1873,8 +1910,8 @@ This is achieved using the deserializer as specified in
 		(warn "No deserializer found for symbol '%s' in desktop file of collection
 		  '%s'. Check `perject-global-vars-to-save'" sym name)))))
 
-;; Printing the message directly within this function does not give the desired result,
-;; so we temporarily overwrite `perject--previous-collections'.
+;; Printing the message directly within this function does not give the desired
+;; result, so we temporarily overwrite `perject--previous-collections'.
 (defun perject--desktop-info (name)
   "Generate information about the collection named NAME that was just restored.
 This also sets `inhibit-message' and `message-log-max' (which were locally bound
@@ -1884,7 +1921,7 @@ Never call this function manually."
   ;; We access the variables from `desktop-read'.
   (let ((projects (mapcar #'cdr (perject-get-projects name))))
 	(setq perject--previous-collections
-	 (format "Perject: Restored collection '%s'%s: %s%s%d buffer%s%s%s."
+	 (format "Perject: Restored collection '%s'%s: %s%s%d buffer%s%s%s"
 			 name
 			 (if projects
 				 (concat " (" (string-join projects ", ") ")") "")
@@ -1907,27 +1944,6 @@ Never call this function manually."
 						 (length desktop-buffer-args-list))
 			   ""))))
   (setq inhibit-message t message-log-max nil))
-
-(defun perject--desktop-restore-frameset-advice ()
-  "Like `desktop-restore-frameset', but allow for more parameters from `frameset-restore'.
-Namely, the variables `perject--desktop-reuse-frames' and
-`perject--desktop-cleanup-frames' may be nil or a function as described at
-`frameset-restore'.
-This function also sets `perject--desktop-restored-frames'."
-  (when (desktop-restoring-frameset-p)
-	;; Reset `perject--desktop-restored-frames'.
-	(setq perject--desktop-restored-frames nil)
-    (frameset-restore
-	 desktop-saved-frameset
-	 :reuse-frames perject--desktop-reuse-frames
-	 ;; Use the cleanup to set the list of restored frames.
-	 :cleanup-frames (lambda (frame action)
-					   (when (memq action '(:reused :created))
-                         (push frame perject--desktop-restored-frames))
-					   (when (functionp perject--desktop-cleanup-frames)
-						 (funcall cleanup-frames frame action)))
-	 :force-display desktop-restore-in-current-display
-	 :force-onscreen desktop-restore-forces-onscreen)))
 
 (provide 'perject)
 ;;; perject.el ends here

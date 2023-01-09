@@ -22,28 +22,33 @@
 ;;;; Customization
 
 (defface perject-current-face '((t :inherit font-lock-keyword-face))
-  "The face used for displaying the the current collection or project.")
+  "The face used for displaying the current collection or project."
+  :group 'perject-faces)
 
 (defface perject-sort-collections-current '((t :inherit font-lock-keyword-face))
-  "The face used for displaying the name of the current collection when ordering collections.
-This influences the command `perject-sort-collections'.")
+  "The face used for displaying the name of the current collection.
+The face is shown when sorting collections using `perject-sort-collections'."
+  :group 'perject-faces)
 
 (defface perject-sort-collections-other '((t :inherit font-lock-comment-face))
-  "The face used for displaying the name of the non-current collection when ordering collections.
-This influences the command `perject-sort-collections'.")
+  "The face used for displaying the name of the non-current collection.
+The face is shown when sorting collections using `perject-sort-collections'."
+  :group 'perject-faces)
 
 (defface perject-sort-projects-current '((t :inherit font-lock-keyword-face))
-  "The face used for displaying the name of the current project when ordering projects.
-This influences the command `perject-sort-projects'.")
+  "The face used for displaying the name of the current project.
+The face is shown when sorting projects using `perject-sort-projects'."
+  :group 'perject-faces)
 
 (defface perject-sort-projects-other '((t :inherit font-lock-comment-face))
-  "The face used for displaying the name of the non-current project when ordering projects.
-This influences the command `perject-sort-projects'.")
+  "The face used for displaying the name of the non-current project.
+The face is shown when sorting projects using `perject-sort-projects'."
+  :group 'perject-faces)
 
-(defcustom perject-close-default '(t t t)
+(defcustom perject-close-default '(t t nil)
   "The default values for the command `perject-close'.
 The value of this variable must be a list with three elements:
-(save kill-frames kill-buffers)
+\(save kill-frames kill-buffers)
 
 Their values may be as follows:
 
@@ -63,7 +68,7 @@ kill-buffers:
 - 'all: Kill all buffers belonging to the closed collection.
 
 Every element of the list may also be a function, in which case it is called
-when closing the collection with the collection name as its only argument and
+before closing the collection with the collection name as its only argument and
 its return value (which must be one of the above values) is interpreted
 accordingly.
 
@@ -84,12 +89,13 @@ above values to nil and use `perject-after-close-hook'."
 		   (const :tag "Kill all buffers belonging to the closed collection and
   to no other collection or project" t)
 		   (const :tag "Kill all buffers belonging to the closed collection" all)
-		   (function :tag "Custom function"))))
+		   (function :tag "Custom function")))
+  :group 'perject)
 
 (defcustom perject-reload-default '(t t)
   "The default values for the command `perject-reload'.
 The value of this variable must be a list with two elements:
-(kill-frames kill-buffers)
+\(kill-frames kill-buffers)
 
 Their values may be as follows:
 
@@ -110,8 +116,8 @@ kill-buffers:
 - 'all: Before reloading the collection, kill all its buffers.
 
 Every element of the list may also be a function, in which case it is called
-when reloading the collection with the collection name as its only argument and
-its return value (which must be one of the above values) is interpreted
+before reloading the collection with the collection name as its only argument
+and its return value (which must be one of the above values) is interpreted
 accordingly.
 
 If you need more sophisticated control over the frames and buffers, set the
@@ -130,12 +136,13 @@ above values above to nil and use `perject-after-reload-hook'."
 		   (const :tag "Before reloading the collection, kill all its buffers
   that do not belong to any other collection or project" t)
 		   (const :tag "Before reloading the collection, kill all its buffers" all)
-		   (function :tag "Custom function"))))
+		   (function :tag "Custom function")))
+  :group 'perject)
 
-(defcustom perject-delete-default '(t t keep t)
+(defcustom perject-delete-default '(t nil keep nil)
   "The default values for the command `perject-delete'.
 The value of this variable must be a list with two elements:
-(kill-frames kill-buffers kill-frames kill-buffers)
+\(kill-frames kill-buffers kill-frames kill-buffers)
 
 The first two elements have an effect when deleting collections and the other
 two elemens influence deleting projects.
@@ -157,9 +164,9 @@ The second kill-frames may also have the value 'keep, in which case the frames
 are removed from the deleted project but not from its collection (and are not
 killed).
 Every element of the list may also be a function, in which case it is called
-when reloading the collection with the collection name as its only argument and
-its return value (which must be one of the above values) is interpreted
-accordingly.
+before deleting the collection (or project) with the collection name (or
+project) as its only argument. Its return value must be one of the above values
+and is interpreted accordingly.
 
 If you need more sophisticated control over the frames and buffers, set the
 above values above to nil and use `perject-after-delete-collection-hook' or
@@ -189,13 +196,15 @@ above values above to nil and use `perject-after-delete-collection-hook' or
 		   (const :tag "Kill all buffers belonging to the deleted project and
   to no other collection or project" t)
 		   (const :tag "Kill all buffers belonging to the deleted project" all)
-		   (function :tag "Custom function"))))
+		   (function :tag "Custom function")))
+  :group 'perject)
 
 (defcustom perject-confirm-delete t
-  "When non-nil, the user is asked for confirmation before a collection or project is deleted."
+  "When non-nil, ask for confirmation before deleting a collection or project."
   :type '(choice
 		  (const :tag "Ask for confirmation before deleting a collection or project" t)
-		  (const :tag "Don't ask for confirmation before deleting a collection or project" nil)))
+		  (const :tag "Don't ask for confirmation before deleting a collection or project" nil))
+  :group 'perject)
 
 
 ;;;; Internal Variables
@@ -431,8 +440,7 @@ current collection otherwise."
 				   "Deleting %s. Are you sure?"
 				   (if col-p
 					   (concat "collection '" col-or-proj "'")
-					 (concat "project '" (perject-project-to-string col-or-proj) "'"))
-				   col-or-proj)))
+					 (concat "project '" (perject-project-to-string col-or-proj) "'")))))
 	 (apply (if col-p #'perject-delete-collection #'perject-delete-project)
 			perject--transient))))))
 
@@ -468,7 +476,7 @@ current collection otherwise."
   (unless (eq transient-current-command 'perject-delete)
 	(user-error "This function may only be called within transient"))
   (let ((proj (perject--get-project-name
-			   "Select project: " 'all nil t (perject-current)
+			   "Delete project: " 'all nil t (perject-current)
 			   "There currently is no project to delete"
 			   "No project specified")))
 	(setq perject--transient
@@ -608,14 +616,14 @@ The collection is determined by `perject--sort-collections-index'."
 	(setq perject--sort-collections-index (mod (1- perject--sort-collections-index) length))))
 
 (defun perject--sort-collections-next ()
-  "Select the next collection as determined by `perject--sort-collections-index'."
+  "Select the next collection as given by `perject--sort-collections-index'."
   (interactive)
   (unless (eq transient-current-command 'perject-sort-collections)
     (user-error "This function can only be called within `perject-sort-collections'"))
   (setq perject--sort-collections-index (mod (1+ perject--sort-collections-index) (length perject-collections))))
 
 (defun perject--sort-collections-previous ()
-  "Select the previous collection as determined by `perject--sort-collections-index'."
+  "Select the previous collection as given by `perject--sort-collections-index'."
   (interactive)
   (unless (eq transient-current-command 'perject-sort-collections)
     (user-error "This function can only be called within `perject-sort-collections'"))

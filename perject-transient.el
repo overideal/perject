@@ -571,7 +571,7 @@ current collection otherwise."
 						  "frame and its association"
 						(format "%s frames and their associations" (length frames)))
 					  (car proj))
-			(if (eq (length (frame-list)) frames)
+			(if (eq (length (frame-list)) (length frames))
 				"Keep the frames (cannot delete all Emacs frames)"
 			  (format (caddr strings)
 					  (if (eq (length frames) 1)

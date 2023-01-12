@@ -67,7 +67,7 @@ than to ordinary ones."
 This variable acts exactly like `tab-bar-tab-name-truncated-max' and exists for
 the reason that a user might want a different maximum length to apply to perject
 tabs than to ordinary ones."
-  :type 'integer)
+  :type 'natnum)
 
 (defcustom perject-tab-messages
   '(create delete cycle-state set reset index switch next previous recent)

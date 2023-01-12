@@ -125,14 +125,19 @@ This also disables all previous filters by project or collection."
   "Add the marked buffers or the buffer at point to the project PROJ.
 PROJ is a dotted pair with car a collection and cdr a project name.
 In interactive use, PROJ defaults to the current project. If the current frame
-is not associated with any project or if a prefix argument is supplied, let the
-user choose the project."
+is not associated with any project or if a single prefix argument is supplied,
+let the user choose a project from the current collection. In any other case the
+user may choose from the list of all projects from all active collections."
   (interactive
    (list (if (and (not current-prefix-arg) (cdr (perject-current)))
 			 (perject-current)
 		   (perject--get-project-name
-            "Add marked buffers to project: " 'current nil t nil
-			"The collection has no active project"
+            "Add marked buffers to project: "
+			(if (equal current-prefix-arg '(4)) 'current 'all)
+			nil t nil
+			(if (and (equal current-prefix-arg '(4)) (perject-current))
+				"The current collection has no projects"
+			  "No projects exist")
 			"No project specified"))))
   (let ((buffers (ibuffer-marked-buffer-names)))
     (if buffers
@@ -163,13 +168,18 @@ user choose the project."
 PROJ is a dotted pair with car a collection and cdr a project name.
 In interactive use, PROJ defaults to the current project. If the current frame
 is not associated with any project or if a prefix argument is supplied, let the
-user choose the project."
+user choose a project from the current collection. In any other case the user
+may choose from the list of all projects from all active collections."
   (interactive
    (list (if (and (not current-prefix-arg) (cdr (perject-current)))
 			 (perject-current)
 		   (perject--get-project-name
-            "Remove marked buffers from project: " 'current nil t nil
-			"The collection has no active project"
+            "Remove marked buffers from project: "
+		    (if (equal current-prefix-arg '(4)) 'current 'all)
+			nil t nil
+			(if (and (equal current-prefix-arg '(4)) (perject-current))
+				"The current collection has no projects"
+			  "No projects exist")
 			"No project specified"))))
   (let ((buffers (ibuffer-marked-buffer-names)))
     (if buffers

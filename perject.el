@@ -6,7 +6,7 @@
 ;; Maintainer: overideal
 ;; Version: 3.2
 ;; Package-Requires: ((emacs "27.1") (dash "2.12"))
-;; Homepage: https://gitlab.com/overideal/perject
+;; Homepage: https://github.com/overideal/perject
 
 ;;; Commentary:
 
@@ -162,7 +162,7 @@ This variable may have one of the following values:
   restored at startup.
 - t: Raise and focus the frame in both `perject-open' and at
   startup."
-  :type '(set
+  :type '(choice
 		  (const :tag "Do not perform any manual raising or focusing" nil)
 		  (const :tag "Raise and focus the frame first restored by
 		  `perject-open'" open)
@@ -299,27 +299,31 @@ nil if the frame should not be saved."
 When a hook in `perject-auto-add-hooks' runs, this function is called in order
 to decide to which projects the current buffer should be added to.
 It is called with two arguments. The first argument is the current buffer. The
-second is a cons cell with car a collection name and cdr a project name. The
-project name may also be nil.
-The function should return a list of collection project pairs to which the
-buffer should be added. By returning nil (the empty list) the buffer is not
-added to any project.
+second is a cons cell with car a collection name and cdr a project name. This
+might be nil or the project name could be nil.
+The function should return a list of projects to which the buffer should be
+added. By returning nil (the empty list) the buffer is not added to any project.
 Setting this variable to nil means always add the buffer to the current project.
+Any entries in the returned list that do not correspond to existing projects are
+ignored.
+
 This variable is intended to allow for advanced customization and thus for the
 majority of use cases, the value nil should suffice."
   :type '(choice function (const nil)))
 
-;; There is no hook that is run after an arbitrary buffer is created.
-;; See https://stackoverflow.com/questions/7899949/is-there-an-emacs-hook-that-runs-after-every-buffer-is-created.
-(defcustom perject-auto-add-hooks '(find-file-hook clone-indirect-buffer-hook dired-mode-hook)
+(defcustom perject-auto-add-hooks
+  '(find-file-hook clone-indirect-buffer-hook dired-mode-hook occur-mode-hook
+				   help-mode-hook Info-mode-hook org-src-mode-hook)
   "A list of hooks in which the current buffer is added to the current project.
-This is used to automatically add newly created buffers to the current project.
-The following hooks could be interesting to the user:
-`find-file-hook', `clone-indirect-buffer-hook',
-`buffer-list-update-hook', `change-major-mode-hook' and many mode hooks.
+This is used to automatically add buffers to projects.
+The following hooks could be interesting to the user: `find-file-hook',
+`clone-indirect-buffer-hook', `buffer-list-update-hook',
+`after-change-major-mode-hook', `window-selection-change-functions' and many
+mode hooks.
 Modifcations of this variable only take effect after (re)enabling
 `perject-mode'.
-Internally, the function `perject--auto-add-buffer' is used."
+By default, the current buffer is added to the current project. The variable
+`perject-auto-add-function' can be used to tweak this behavior."
   :type '(repeat variable))
 
 (defcustom perject-project-format "%s|%s"
@@ -577,6 +581,7 @@ Should not be modified by the user.")
 (define-minor-mode perject-mode
   "Group buffers and frames into projects which are preserved when restarting."
   :global t
+  :group 'perject
   :keymap (make-sparse-keymap)
   (if perject-mode
       (progn
@@ -669,14 +674,17 @@ selected and focused is determined by `perject-raise-and-focus-frame'."
 			 (list (split-string (nth (1+ index) command-line-args) ","))
 			 (cols (-separate #'perject-collection-p list)))
 		(progn
-		  (when (cadr cols)
-			(warn "Perject: The following collections do not exist: %s" (string-join (cadr cols) ", ")))
+		  ;; Warn about the non-existent collections, but ignore the empty
+		  ;; string, which e.g. occurs when calling Emacs with --perject "" to
+		  ;; load no collections
+		  (when-let ((no-cols (delete "" (cadr cols))))
+			(warn "Perject: The following collections do not exist: %s" (string-join no-cols ", ")))
 		  (setq cols-to-load (car cols)
 				command-line-args
 				(append (seq-take command-line-args index) (seq-drop command-line-args (+ index 2)))))
 	  (let ((cols (-separate #'perject-collection-p cols-to-load)))
-		(when (cadr cols)
-		  (warn "Perject: The following collections do not exist: %s" (string-join (cadr cols) ", "))
+		(when-let ((no-cols (cadr cols)))
+		  (warn "Perject: The following collections do not exist: %s" (string-join no-cols ", "))
 		  (setq cols-to-load (car cols)))))
 	;; If `perject-reuse-starting-frame' is non-nil, we may reuse the "starting
 	;; frame" for a collection, but as soon as it is "claimed" (or somehow
@@ -874,7 +882,8 @@ This function runs the hooks `perject-before-delete-collection-hook' and
       (perject-close-collection name nil kill-frames kill-buffers))
     (when (file-exists-p (perject-get-collection-dir name))
       (delete-directory (perject-get-collection-dir name) t))
-	(run-hook-with-args 'perject-after-delete-collection-hook name))
+	(run-hook-with-args 'perject-after-delete-collection-hook name)
+	(message "Deleted collection '%s'" name))
 
 (defun perject-delete-project (proj kill-frames kill-buffers)
   "Delete the project PROJ.
@@ -912,7 +921,8 @@ This function runs the hooks `perject-before-delete-project-hook' and
 	(dolist (buffer buffers-to-kill)
 	  (kill-buffer buffer))
 	(setq buffers (cl-set-difference buffers buffers-to-kill))
-	(run-hook-with-args 'perject-after-delete-project-hook proj frames buffers)))
+	(run-hook-with-args 'perject-after-delete-project-hook proj frames buffers)
+	(message "Deleted project '%s'" (perject-project-to-string proj))))
 
 
 ;;;; Opening, Closing and Saving
@@ -1193,36 +1203,44 @@ and `perject-after-create-hook'."
 	(force-mode-line-update t)))
 
 (defun perject-next-collection (&optional msg)
-  "Switch to the next active collection.
-If there are no active collections, throw an error. If the optional argument MSG
-is non-nil, also print an informative message.
+  "Switch to a project of the next active collection.
+If the next collection has no projects, just switch to that collection. If there
+are no active collections, throw an error. If the optional argument MSG is
+non-nil, also print an informative message.
 In interactive use, this is determined by `perject-messages'.
 
 This function runs the hooks `perject-before-switch-hook' and
 `perject-after-switch-hook'."
-  (interactive (list (member 'next-collection perject-messages)))
+  (interactive (list (memq 'next-collection perject-messages)))
   (let ((collections (perject-get-collections 'active))
 		(current (car (perject-current))))
 	(unless collections
 	  (user-error "There currently are no collections"))
-	(let ((index (or (and current (cl-position current collections :test #'string-equal)) 0)))
-	  (perject-switch (nth (mod (1+ index) (length collections)) collections) nil msg))))
+	(let* ((index (or (and current (cl-position current collections :test #'string-equal)) 0))
+		   (col (nth (mod (1+ index) (length collections)) collections))
+		   (target (if-let ((projects (perject-get-projects col)))
+					   (car projects) col)))
+	  (perject-switch target nil msg))))
 
 (defun perject-previous-collection (&optional msg)
-  "Switch to the previous active collection.
-If there are no active collections, throw an error. If the optional argument MSG
-is non-nil, also print an informative message.
+  "Switch to a project of the previous active collection.
+If the previous collection has no projects, just switch to that collection. If
+there are no active collections, throw an error. If the optional argument MSG is
+non-nil, also print an informative message.
 In interactive use, this is determined by `perject-messages'.
 
 This function runs the hooks `perject-before-switch-hook' and
 `perject-after-switch-hook'."
-  (interactive (list (member 'previous-collection perject-messages)))
+  (interactive (list (memq 'previous-collection perject-messages)))
   (let ((collections (perject-get-collections 'active))
 		(current (car (perject-current))))
 	(unless collections
 	  (user-error "There currently are no collections"))
-	(let ((index (or (and current (cl-position current collections :test #'string-equal)) 0)))
-	  (perject-switch (nth (mod (1- index) (length collections)) collections) nil msg))))
+	(let* ((index (or (and current (cl-position current collections :test #'string-equal)) 0))
+		   (col (nth (mod (1- index) (length collections)) collections))
+		   (target (if-let ((projects (perject-get-projects col)))
+					   (car projects) col)))
+	  (perject-switch target nil msg))))
 
 (defun perject-next-project (&optional msg)
   "Switch to the next project within the current collection.
@@ -1232,7 +1250,7 @@ In interactive use, this is determined by `perject-messages'.
 
 This function runs the hooks `perject-before-switch-hook' and
 `perject-after-switch-hook'."
-  (interactive (list (member 'next-project perject-messages)))
+  (interactive (list (memq 'next-project perject-messages)))
   (let ((projects (alist-get (perject-assert-collection) perject-collections nil nil #'string-equal))
 		(current (cdr (perject-current))))
 	(unless projects
@@ -1249,7 +1267,7 @@ In interactive use, this is determined by `perject-messages'.
 
 This function runs the hooks `perject-before-switch-hook' and
 `perject-after-switch-hook'."
-  (interactive (list (member 'previous-project perject-messages)))
+  (interactive (list (memq 'previous-project perject-messages)))
   (let ((projects (alist-get (perject-assert-collection) perject-collections nil nil #'string-equal))
 		(current (cdr (perject-current))))
 	(unless projects
@@ -1273,7 +1291,7 @@ from all active collections.
 In interactive use, depending on the value of `perject-messages', a message is
 printed upon successfully adding the buffer to the project.
 If the buffer is already associated with the project, an error is thrown.
-Note that this function does not check whether PROJ is an existent project and
+Note that this function does not check whether PROJ is an existing project and
 whether BUFFER has already been killed, so caller functions should take care of
 that."
   (interactive
@@ -1297,7 +1315,7 @@ that."
 		 t nil
 		 "All projects are already associated with the current buffer"
 		 "No project specified")))
-    (member 'add-buffer perject-messages)))
+    (memq 'add-buffer perject-messages)))
   (when (perject-is-assoc-with buffer proj)
 	(user-error "Buffer '%s' is already associated with project '%s'"
                 (buffer-name buffer) (perject-project-to-string proj)))
@@ -1319,7 +1337,7 @@ that are currently associated with BUFFER.
 In interactive use, depending on the value of `perject-messages', a message is
 printed upon successfully removing the buffer from the project.
 If the buffer is not associated with the project, an error is thrown.
-Note that this function does not check whether PROJ is an existent project and
+Note that this function does not check whether PROJ is an existing project and
 whether BUFFER has already been killed, so caller functions should take care of
 that."
   (interactive
@@ -1328,7 +1346,7 @@ that."
 	(if (and (not current-prefix-arg) (cdr (perject-current)))
 		(perject-current)
 	  ;; Let the user select from the projects of the current collection only if
-	  ;; not all of them are already associated with the buffer.
+	  ;; at least one of them is associated with the buffer.
 	  (if-let (((or (not current-prefix-arg) (equal current-prefix-arg '(4))))
 			   (col (car (perject-current)))
 			   (projects (cl-remove-if-not
@@ -1343,7 +1361,7 @@ that."
 		 t nil
 		 "The buffer is currently not associated with any project"
 		 "No project specified")))
-	(member 'remove-buffer perject-messages)))
+	(memq 'remove-buffer perject-messages)))
   (unless (perject-is-assoc-with buffer proj)
 	(user-error "Buffer '%s' is not associated with project '%s'"
                 (buffer-name buffer) (perject-project-to-string proj)))
@@ -1362,11 +1380,11 @@ interactive use."
 		(buffer-name (buffer-name buffer)))
 	(pcase (buffer-local-value 'perject-buffer buffer)
 	  ('nil
-	   (message "The buffer '%s' is not associated with any projects." buffer-name))
+	   (message "The buffer '%s' is not associated with any projects" buffer-name))
 	  (`(,project)
-	   (message "The buffer '%s' is associated with the project '%s'." buffer-name (perject-project-to-string project)))
+	   (message "The buffer '%s' is associated with the project '%s'" buffer-name (perject-project-to-string project)))
 	  (projects
-	   (message "The buffer '%s' is associated with the projects: %s."
+	   (message "The buffer '%s' is associated with the projects: %s"
 				buffer-name
 				(string-join (mapcar #'perject-project-to-string projects) ", "))))))
 
@@ -1374,7 +1392,7 @@ interactive use."
 ;;;; Public Interface
 
 (defun perject-current (&optional frame)
-  "Return the collection and project currently associated with the frame FRAME.
+  "Return the collection or project currently associated with the frame FRAME.
 If FRAME is nil, use the current frame.
 The returned value is a dotted pair with car the collection and cdr the project
 name."
@@ -1704,7 +1722,7 @@ collection with the the specified name, an error is thrown."
            (and (>= char 97) (<= char 122)) ;; lowercase letter
            (member char perject-valid-naming-chars)
            (user-error
-			"The character '%c' is not valid for naming a projectn. See the variable `perject-valid-naming-chars'"
+			"The character '%c' is not valid for naming a project. See the variable `perject-valid-naming-chars'"
 			char )))
 	 name)
 	(when (string-empty-p name)

@@ -12,7 +12,9 @@ There are many more, which are mentioned in text below.
 If you like what you see, give the package a try!
 
 ** Switching Buffers, Projects and Collections
+
 https://user-images.githubusercontent.com/89090800/212338462-d9c9a6cd-9de3-4400-840e-f339e6faa3bc.mp4
+
 In the first demo, you can see that the bottom right shows the current collection ("elisp") and the current project ("perject") within this collection.
 After calling =consult-buffer= to switch buffer, only the buffers that belong to the current project are offered as candidates.
 By pressing /SPC/ I force Emacs to show all buffers, not just those belonging to the project.
@@ -22,10 +24,14 @@ When calling =consult-buffer= within this context, the offered buffers have chan
 
 I switch to another project "fractals" within the same collection and of course the candidates when switching buffers have again changed.
 ** IBuffer
+
 https://user-images.githubusercontent.com/89090800/212338521-e04334ca-3b05-40a2-9ce0-ee983296c13d.mp4
+
 Here I call *ibuffer*, remove a buffer from the current project and then add two buffers to the current project.
 ** Tabs
+
 https://user-images.githubusercontent.com/89090800/212338536-40cb396a-41d7-48a7-b9c2-d282023e96fc.mp4
+
 I demonstrate the basic functionality of *perject-tab*.
 By looking at the bottom right, we can see that the current project "elisp | perject" (collection "elisp", project "perject")
 has three tabs ("window configurations") and we are currently viewing the first.

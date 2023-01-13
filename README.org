@@ -1,73 +1,443 @@
-* perject
-
+* Summary
 This package allows the user to manage multiple projects in a single Emacs instance.
 
-** The Name
-The name is a play on "per project", since this package manages frames and buffers per project.
+The name is a play on "per project", since this package manages frames, buffers and tabs per project.
 
-** Installation and Setup
-Currently not on [[https://melpa.org/][melpa]].
+* Demonstrations
+All demonstrations use the full default configuration, the [[https://github.com/doomemacs/themes][doom one]] theme, a modified version of [[https://github.com/qaiviq/echo-bar.el][echo-bar]]
+and [[https://github.com/minad/consult][consult]], [[https://github.com/minad/vertico][vertico]], [[https://github.com/minad/marginalia][marginalia]] etc.
 
-With [[https://github.com/jwiegley/use-package][use-package]], the code looks as follows:
+These demonstrations are supposed to give you a small glimpse into the features offered by /perject/.
+There are many more, which are mentioned in text below.
+If you like what you see, give the package a try!
+
+** Switching Buffers, Projects and Collections
+In the first demo, you can see that the bottom right shows the current collection ("elisp") and the current project ("perject") within this collection.
+After calling =consult-buffer= to switch buffer, only the buffers that belong to the current project are offered as candidates.
+By pressing /SPC/ I force Emacs to show all buffers, not just those belonging to the project.
+
+I then switch to a different project within a different collection, namely "math | category" (collection "math", project "category").
+When calling =consult-buffer= within this context, the offered buffers have changed.
+
+I switch to another project "fractals" within the same collection and of course the candidates when switching buffers have again changed.
+** IBuffer
+Here I call *ibuffer*, remove a buffer from the current project and then add two buffers to the current project.
+** Tabs
+I demonstrate the basic functionality of *perject-tab*.
+By looking at the bottom right, we can see that the current project "elisp | perject" (collection "elisp", project "perject")
+has three tabs ("window configurations") and we are currently viewing the first.
+I then switch to the second tab and after a short while back to the first.
+You can see that the window configuration changes accordingly.
+
+Back at the first tab, we switch to a different buffer (/consult.el/) and after switching back and forth,
+we see that the first tab did not update its value. This is because its current state is "dynamic" (see below).
+After changing the state to "mutable" and performing the buffer switch again, we see that the tab's value now updates when switching to a different tab.
+
+* Motivation
+This package gives Emacs a notion of "current project" and this added context makes working with Emacs more convenient.
+For example, when switching buffers using =consult-buffer=, Emacs will offer the buffers belonging to the current project.
+After all, within e.g. the context of the project "haskell" it makes no sense to show the Emacs configuration buffer,
+whereas within a project "org" used for organizational purposes, the haskell files are completely irrelevant.
+This is somewhat analogous to the buffer-local variable /default-directory/, which saves the current directory of a buffer,
+allowing Emacs to start in that directory when calling =M-x find-file=.
+In the same way, perject assigns a context (project) to a frame, which makes working on the current task more convenient.
+
+* Terminology
+Here we outline the terminology used throughout this document.
+How to make use of these various concepts is outlined below.
+** Project
+A *project* (in the perject sense) groups frames, buffers and tabs (with /perject-tab/) that serve a common purpose.
+Which of those belong to a particular project is determined by the user. They are preserved between Emacs sessions using the built-in package /desktop.el/.
+Furthermore, hooks are configured (see the variable =perject-auto-add-hooks=) to automatically assign the current buffer to the current project in certain situations (e.g. when opening a file).
+This ensures that the user rarely has to manually add a buffer to a project.
+
+While a buffer can belong to multiple projects, a frame can only belong to a single project (or collection or neither).
+Similarly, every tab (see below) belongs to exactly one project.
+
+** Collections
+A *collection* consists of any number of projects and every project belongs to precisely one collection.
+Collections are saved and restored using /desktop.el/. Every collection is saved in a single desktop file.
+As such, their one and only purpose is to group projects into appropriate blocks, allowing quick loading of and switching between related projects.
+In particular, collections do not have a list of associated buffers or tabs.
+However, a frame may be associated with a collection, though there is usually no real benefit in this.
+
+For example, a collection "elisp" might consist of various Emacs lisp projects;
+a collection "uni" might have one project per university course or a collection "work"
+could have one project per client.
+
+Of course, it is up to the user to define meaningful collections to suit the workflow.
+Note that there is also the option to completely ignore the concept of collections
+by using only a single collection and adding all projects to that collection.
+
+We call a collection *active* if it is currently loaded in Emacs. That means that it was just created or it was previously loaded from its desktop file.
+In contrast, an *inactive* collection is one that is not loaded but has a corresponding desktop file (within an appropriately named subdirectory of =perject-directory=).
+
+** Tabs (Window Configurations)
+With the optional module /perject-tab/, a project may also contain [[https://www.gnu.org/software/emacs/manual/html_node/elisp/Window-Configurations.html][window configurations]] (which we call *tabs* for brevity).
+These are then saved and restored upon exiting and restarting Emacs and the user may quickly switch between them.
+
+* Usage
+A new collection can be created using =perject-open=. The same command is also used to restore previously opened collections from the corresponding desktop files.
+To close a collection, run the command =perject-close=.
+A project can also be reloaded using =perject-reload=. This means that any changes to the collection are discarded and its state is reverted it to that of the previous save.
+For convenience, these commands are combined into the command =perject-open-close-or-reload= (see its documentation).
+
+After opening a collection, the user may create a new project using =perject-switch=.
+The same command is also used to create new projects.
+
+After creating a project, you may want to create a new frame for it (=perject-create-new-frame=) or add various buffers to the project.
+The latter is achieved using the command =perject-add-buffer-to-project=.
+In case you want to add multiple buffers to the same project, it might be more convenient to use *ibuffer* and =perject-ibuffer-add-to-project=.
+It is also possible to open a collection in a new Emacs process using =perject-open-in-new-instance=.
+
+Within a collection a user can cycle between the various projects using =perject-next-project= and =perject-previous-project=.
+One can also cycle between the different collections via =perject-next-collection= and =perject-previous-collection=.
+
+When exiting, Emacs will save the active collections as determined by the variable =perject-save-on-exit=
+but the user may always manually save one or multiple collections using =perject-save=.
+
+Projects and collections can also be renamed (=perject-rename=), deleted (=perject-delete=) and sorted (=perject-sort=).
+
+The command =perject-print-buffer-projects= lists the projects to which the current buffer belongs.
+
+* Features
+** Consult (perject-consult)
+The *perject-consult* package integrates perject with the excellent [[https://github.com/minad/consult][consult]] package.
+More precisely, it adds two new sources to the =consult-buffer= command
+(which is an enhanced version of the built-in =switch-to-buffer= command).
+With the default configuration (see below), calling this command within a frame that currently belongs to a project will restrict
+the buffer list to those buffers belonging to the current collection.
+By pressing =SPC= at the beginning of the prompt (which initiates narrowing), all buffers become available.
+The user may also restrict the candidates to the buffers belonging to the current collection
+(meaning that there exists some project within the collection to which the buffer belongs) by pressing =c= at the beginning of the prompt.
+
+** IBuffer (perject-ibuffer)
+The *perject-ibuffer* package intgrates perject with the built-in *ibuffer* package.
+More precisely, it adds two new filters, namely =ibuffer-filter-by-project= and =ibuffer-filter-by-collection=,
+which allow restricting the ibuffer list to only those buffers belonging to a particular project (or collection).
+
+It also provides commands to add (=perject-ibuffer-add-to-project=) or remove (=perject-ibuffer-remove-from-project=) the marked buffers within ibuffer to the current project (or a selected project).
+Additionally, the command =perject-ibuffer-print-buffer-projects= prints the projects to which the buffer at point (within ibuffer) belongs.
+
+** Tabs (perject-tab)
+*Perject-tab* allows the user to save and restore the window configurations belonging to a project.
+This uses the built-in library /tab-bar.el/.
+Every project has a list of tabs (window configurations), which can be cycled using =perject-tab-next= and =perject-tab-previous=.
+You can also switch to the $n$-th tab (with prefix arguments) using =perject-tab-switch=.
+Create a new tab with =perject-tab-create= and delete it using =perject-tab-delete=.
+
+When cycling, it might be convenient to reorder the tabs in certain situations.
+To that end, the commands =perject-tab-decrement-index= and =perject-tab-increment-index= are provided.
+
+The index of the current and previous tab are saved, so that the user may easily toggle between the current and previous tab using =perject-tab-recent=.
+When switching from one project to another, the window configuration will switch to the current tab of the current project.
+
+Whether a tab is updated when switching to a different one is determined by its *state*.
+By default, there are three states:
+- immutable: An immutable tab is never updated.
+- mutable: A mutable tab is always updated.
+- dynamic: A dynamic tab is updated only if the new window configuration has
+  the same window layout. This test ignores details such as the values of point
+  and scrolling positions.
+You can cycle the state of the current tab using =perject-tab-cycle-state= and
+custom states can be defined by customizing the variable =perject-tab-states=.
+
+You can always set the current tab to the current window configuration by calling =perject-tab-set=
+and reset the current window configuration to that specified by the current tab using =perject-tab-reset=.
+
+** Mode Line
+Perject provides a mode line indicator, which can be customized (and disabled) via the variable =perject-mode-line-format=.
+It is shown in =mode-line-misc-info=, which by default is displayed for every buffer.
+It displays the project and collection name (and some information about the tabs if =perject-tab-mode= is enabled).
+Because displaying this information (which is independent of the current buffer) clutters the screen with redudant information, I suggest using something like [[https://github.com/qaiviq/echo-bar.el][echo-bar]] and configure it to display =mode-line-misc-info=.
+In that way, the information is only displayed once at the bottom of the screen and not for every buffer in the frame.
+
+There is also an extra indicator for the mode line =perject-mode-line-current=,
+that can be added to =mode-line-format= like so:
+#+BEGIN_SRC emacs-lisp
+(setq-default mode-line-format
+	      '("%e" mode-line-front-space
+		(:propertize
+		 ("" mode-line-mule-info mode-line-client mode-line-modified mode-line-remote perject-mode-line-current)
+		 display
+		 (min-width
+		  (5.0)))
+		mode-line-frame-identification mode-line-buffer-identification "   " mode-line-position
+		(vc-mode vc-mode)
+		"  " mode-line-modes mode-line-misc-info mode-line-end-spaces))
+#+END_SRC
+See the demonstrations above for how this looks (when used together with a package like [[https://github.com/qaiviq/echo-bar.el][echo-bar]]).
+
+** Command Line Option
+Perject adds a new command line option to Emacs.
+After passing the argument =--perject=, the user may list the collections (comma separated) that should be loaded after Emacs has initialized.
+For example, when starting Emacs with =--perject "org,elisp"=, the collections "org" and "elisp" (and all of their projects) will be restored
+after opening Emacs.
+Similarly, running Emacs with =--perject ""= prevents perject from automatically opening any collections on startup.
+** Other Built-In Features
+Note that other features built into Emacs like bookmarks, registers etc. are shared for all projects.
+However, it should not be hard to implement those facilities if desired.
+
+* Dependencies and Installation
+This package requires at least version 27.1 of GNU Emacs and depends on the following packages:
+- desktop.el (built-in)
+- seq.el (built-in)
+- cl-lib.el (built-in)
+- transient.el (built-in since Emacs 28.1)
+- tab-bar.el (built-in)
+- [[https://github.com/magnars/dash.el][dash.el]]
+
+Since the package is currently not on [[https://melpa.org/][MELPA]], you need to either clone this repository and add it to your load path
+or use a tool like [[https://github.com/radian-software/straight.el][straight.el]].
+I am assuming that you are using the excellent [[https://github.com/jwiegley/use-package][use-package]], which will also be built-into Emacs from version 29 onwards.
+** With Straight.el
+The package manager will take care of installing the dependencies.
 #+BEGIN_SRC emacs-lisp
 (use-package perject
-  :ensure nil
-  :load-path ;; your load path
-  :config (perject-mode 1))
+  :straight (:host github :repo "overideal/perject")
+  ;; The rest of the configuration here...
+  )
+#+END_SRC
+** Manually
+First install [[https://github.com/magnars/dash.el][dash.el]] and if you are using a version of Emacs older than 28.1 also [[https://github.com/magit/transient][transient]].
+Then clone this repository and add its directory to your load path:
+#+BEGIN_SRC emacs-lisp
+(add-to-list 'load-path "your path")
+#+END_SRC
+Then you can load the package as follows:
+#+BEGIN_SRC emacs-lisp
+(use-package perject
+  :load-path "your path"
+  ;; The rest of the configuration here...
+  )
 #+END_SRC
 
-If you use [[https://github.com/raxod502/straight.el][straight]], you can simplify this to...
+* Default Configuration
+*perject* does not define any keybindings (except via transient), so this must be done in the user's configuration.
+Of course, the user might want to change the keybindings defined below.
+#+BEGIN_SRC emacs-lisp
+(use-package perject
+  :after savehist
+  :init
+  ;; Make perject load the collections that were previously open.
+  ;; This requires configuring `savehist' (see next code block).
+  (setq perject-load-at-startup 'previous)
 
-** Setup
-TODO
-** Connection to desktop.el
-As mentioned, /perject/ uses the built-in package /desktop.el/ under the hood.
+  (perject-mode 1)
+  :bind
+  (:map perject-mode-map
+		("s-S" . perject-switch)
+		("s-a" . perject-next-project)
+		("s-A" . perject-previous-project)
+		("s-z" . perject-next-collection)
+		("s-Z" . perject-previous-collection)
+		("C-x 5 2" . perject-create-new-frame)
+		("<C-insert>" . perject-add-buffer-to-project)
+		("<C-delete>" . perject-remove-buffer-from-project)
+		("<C-home>" . perject-open-close-or-reload)
+		("<C-end>" . perject-rename)
+		("<C-S-end>" . perject-sort)
+		("<C-prior>" . perject-save)
+		("<C-next>" . perject-delete)))
+#+END_SRC
 
-It provides an extended interface to this package.
-As such, the user should not manually call commands like =desktop-save= and =desktop-read=.
-Instead, use commands like =perject-save-project= and =perject-open-project=.
+The built-in *savehist* package is used to save and restore variables that get otherwise restored by =desktop.el=.
+If =perject-load-at-startup= is set to /'previous/, then you need to add the following lines of code to your Emacs configuration file:
+#+BEGIN_SRC emacs-lisp
+(use-package savehist
+  :config
+  (savehist-mode 1)
+  ;; Required if `perject-load-at-startup' is set to 'previous.
+  (add-to-list 'savehist-additional-variables 'perject--previous-collections))
+#+END_SRC
 
-Furthermore, to avoid unexpected behavior, the user should ensure that the hooks of /desktop.el/
-are not modified in the config file.
-The variables of /desktop.el/ may be altered, but some have no effect on /perject/ since they are overwritten.
-The variables that have no effect include:
-- =desktop-dirname=
-- =desktop-restore-reuses-frames=
-- =desktop-load-locked-desktop=
-- =desktop-buffers-not-to-save-function= (replaced by =perject-buffers-not-to-save-function=)
+Note that *savehist* can furthermore be used to restore global variables that do not have a different value per project.
+You might want to save and restore some global variables by adding the following lines to the previous =:config= block:
+#+BEGIN_SRC emacs-lisp
+(add-to-list 'savehist-additional-variables 'tag-file-name)
+(add-to-list 'savehist-additional-variables 'tags-table-list)
+(add-to-list 'savehist-additional-variables 'search-ring)
+(add-to-list 'savehist-additional-variables 'regexp-search-ring)
+(add-to-list 'savehist-additional-variables 'register-alist)
+(add-to-list 'savehist-additional-variables 'file-name-history)
+#+END_SRC
+The variable =perject-global-vars-to-save= exists for saving global variables that should depend on the current project.
 
-** Integration with other Packages
-In =desktop-after-read-hook= and =desktop-save-hook= the functions can access =perject--desktop-current-project=
-to obtain the current project name (which might be nil).
-** Issues
-Whether /perject/ raises and focuses a frame in certain situations depends on the value of the variable
-/perject-raise-and-focus-frame/. In that case, the function /select-frame-set-input-focus/ is used to raise and focus
-a frame in /perject-open/ and at startup.
-However, depending on the window manager, there might be some weird behaviors with Emacs not focusing the frame properly.
-A value of /t/ for this variable works best for *KDE Plasma*, which I use. If the variable is /nil/, the old frame stays
-at the "front" (my Emacs is always maximized) but the focus is on the newly restored frame "behind" it.
-I suspect that the behavior depends on the used window manager and as such I added the above variable in order
-to disable the default behavior.
-By setting it to /nil/, the user can supply a custom function (add it to /perject-open/ and /perject-after-init-hook/).
+Optionally load =perject-tab= and bind some keys.
+#+BEGIN_SRC emacs-lisp
+(use-package perject-tab
+  :after perject
+  :init
+  (perject-tab-mode 1)
+  :bind
+  (:map perject-tab-mode-map
+		("s-s" . perject-tab-recent)
+		("s-D" . perject-tab-previous)
+		("s-d" . perject-tab-next)
+		("s-f" . perject-tab-set)
+		("s-F" . perject-tab-cycle-state)
+		("s-x" . perject-tab-create)
+		("s-X" . perject-tab-delete)
+		("s-c" . perject-tab-reset)
+		("s-v" . perject-tab-increment-index)
+		("s-V" . perject-tab-decrement-index)))
+#+END_SRC
 
-** Display Mode Line Information
-Perject provides two mode line constructs.
-The first one displays the project and collection name (and tabs if /perject-tab-mode/ is enabled).
-It is displayed automatically whenever /perject-mode/ is enabled (and the current frame belongs to a collection or project).
-Perject also defines the mode line construct *perject-mode-line-current*.
-TODO
-* desktop.el
-| desktop.el              | perject.el                      |
-|-------------------------+---------------------------------|
-| desktop-after-read-hook | perject-desktop-after-load-hook |
-| desktop-save-hook       | perject-desktop-save-hook       |
-* TODO Talk about perject-consult and perject-ibuffer; Find a good place for perject-ivy
-* Testing functions (working)
-- perject-delete-project
-- All functions from "Managing frames"
-* TODO Tests
-- save-on-exit and load-at-startup
-- test the customize interface
-- test perject-buffers-not-to-save-function
-* Explain how to add e.g. scratch buffer to every project
-* Write about support e.g. macos, windows, exwm,
+Before adding the following snippet, ensure that you have a =(use-package consult ...)= block within your configuration file.
+The following code loads =perject-consult= and modifies the command =consult-buffer=.
+It will by default only display the buffers belonging to the current project. You can also manually narrow to that view with /j/.
+By narrowing with /SPC/ all buffers become available and by narrowing with /c/ only the buffers belonging to the current collection (i.e. to some project of the current collection) are shown.
+#+BEGIN_SRC emacs-lisp
+(use-package perject-consult
+  :after (perject consult)
+  :config
+  ;; Hide the list of all buffers by default and set narrowing to all buffers to space.
+  (consult-customize consult--source-buffer :hidden t :narrow 32)
+  (consult-customize consult--source-hidden-buffer :narrow ?h)
+  (add-to-list 'consult-buffer-sources 'perject-consult--source-collection-buffer)
+  (add-to-list 'consult-buffer-sources 'perject-consult--source-project-buffer))
+#+END_SRC
+
+Load =perject-ibuffer= and make ibuffer restrict the buffer list to the buffers of the current project by default.
+Run =M-x ibuffer-filter-disable= in ibuffer to temporarily remove this filter.
+The following snippet also binds some keys.
+#+BEGIN_SRC emacs-lisp
+(use-package perject-ibuffer
+  :after perject
+  :init
+  ;; By default restrict ibuffer to the buffers of the current project.
+  (add-hook 'ibuffer-hook #'perject-ibuffer-enable-filter-by-project)
+  :bind
+  (:map ibuffer-mode-map
+		("<insert>" . perject-ibuffer-add-to-project)
+		("<delete>" . perject-ibuffer-remove-from-project)
+		("<next>" . perject-ibuffer-print-buffer-projects)
+		("/ y" . ibuffer-filter-by-collection)
+		("/ u" . ibuffer-filter-by-project)))
+#+END_SRC
+
+* Customization
+The variables are extensively documented and should be self-explanatory.
+Use =M-x customize-group perject= and =M-x customize-group perject-tab= to view them.
+You can customize the faces used by perject via ==M-x customize-group perject-faces=.
+
+We mention a couple of special customization options.
+
+** =perject-auto-add-hooks=
+This variable is used to systematically add buffers to the current project.
+It is a list of hooks and whenever one of the hooks is run, the current buffer is added to the current project.
+Therefore, manually adding a buffer to a project (with =perject-add-buffer-to-project=) is only rarely required.
+
+There are many hooks that a user may or may not want to add to this variable.
+By default, the list contains =find-file-hook=, =clone-indirect-buffer-hook= and some mode hooks.
+While there is no hook that is run after an arbitrary buffer is created (see [[https://stackoverflow.com/questions/7899949/is-there-an-emacs-hook-that-runs-after-every-buffer-is-created][here]]),
+one could experiment with =buffer-list-update-hook= or =after-change-major-mode-hook=.
+
+The hook =window-selection-change-functions= is a special case since they are called with a frame as its only argument.
+It can be used to add a buffer to a project whenever it is shown in a frame of that project.
+In that case, one has to also remove the hook before opening a collection (and add it again afterwards), because otherwise the hooks might add the restored buffers to an unwanted project.
+For this, use the code:
+#+BEGIN_SRC emacs-lisp
+(defun perject-add-visible-buffers (frame)
+  "Add the buffers that are visible in the frame FRAME to the current project."
+  (dolist (buf (cl-remove-duplicates (mapcar #'window-buffer (window-list nil 0))))
+	(with-current-buffer buf (perject--auto-add-buffer))))
+
+(add-hook 'window-selection-change-functions #'perject-add-visible-buffers)
+(add-hook 'perject-before-open-hook
+		  (lambda (&rest _)
+			(remove-hook 'window-selection-change-functions #'perject-add-visible-buffers)))
+(add-hook 'perject-before-open-hook
+		  (lambda (&rest _)
+			(add-hook 'window-selection-change-functions #'perject-add-visible-buffers)))
+#+END_SRC
+** =perject-auto-add-function=
+This variable controls which buffers are automatically associated with projects.
+When a hook in =perject-auto-add-hooks= runs, this function is called in order
+to decide to which projects the current buffer should be added to.
+It is called with two arguments. The first argument is the current buffer. The
+second is a cons cell with car a collection name and cdr a project name. This
+might be nil or the project name could be nil.
+The function should return a list of projects to which the buffer should be
+added. By returning nil (the empty list) the buffer is not added to any project.
+
+For example, suppose one has the project "org" within a collection of the same name and one wants
+=help-mode= and =info-mode= buffers to always be added to that project and to no other ones.
+The following code implements this behavior:
+#+BEGIN_SRC emacs-lisp
+(defun perject-auto-add-function (buffer project)
+  "Decide if buffer BUFFER should be added to the project PROJECT.
+Returns a list of project names to which BUFFER should be added (might be
+empty)."
+  (if (memq (buffer-local-value 'major-mode buffer) '(help-mode info-mode))
+	  (list (cons "org" "org"))
+	(list project)))
+
+(setq perject-auto-add-function #'perject-auto-add-function)
+#+END_SRC
+** =perject-global-vars-to-save=
+A list of global variables to be saved and restored by perject for every collection.
+This is a generalization of the variable =desktop-globals-to-save=.
+** =perject-local-vars-to-save=
+A list of buffer-local variables to be saved and restored by perject for every collection.
+This is a generalization of the variables =desktop-locals-to-save= and =desktop-var-serdes-funs=.
+** =perject-raise-and-focus-frame=
+This variable determines whether /perject/ raises and focuses a frame in certain situations.
+In those cases, the function /select-frame-set-input-focus/ is used to raise and focus a frame in /perject-open/ and at startup.
+However, depending on the window manager, the raising and focusing of the frame might or might not work properly.
+Therefore, I introduced this variable so that the user can tweak the behavior.
+For example, one could set the variable to /nil/ and optionally add a custom function to /perject-after-open-hook/ and /perject-after-init-hook/ to perform the frame focusing.
+
+* Limitations
+** Startup Time
+Every collection corresponds to one desktop file which saves the buffers, frames and tabs of that collection (i.e. of all its projects).
+Of course, restoring buffers and frames takes time and thus *increases the startup time* of Emacs.
+To decrease the penalty, it is recommended to only load few collections at startup (see =perject-load-at-startup=) and load the other ones "on demand" using =perject-open=.
+
+** Desktop.el
+This package uses =desktop.el= to save and restore the collections.
+As such, it can be seen as an enhancement of that package.
+With perject, there should never be a reason to directly use the *desktop.el* library directly
+and doing so is not supported. In particular, this applies to all of the *desktop-** functions.
+
+To avoid unexpected behavior, the user should additionally keep all /desktop-*/ variables
+at their default value. Exceptions are the following variables:
+- =desktop-buffers-not-to-save=,
+- =desktop-files-not-to-save=,
+- =desktop-modes-not-to-save=.
+
+Furthermore, the user should check carefully the use of desktop hooks
+and might prefer using =perject-desktop-save-hook= and =perject-desktop-after-load-hook=
+(but then the functions are called with one argument).
+** Supported Emacs Version and Operating Systems
+This package has been tested with Emacs 28 and 29 on Linux. Officially supported is *version 27.1 or newer* of *GNU Emacs*
+on *Linux*, run in a graphical user interface (not inside a terminal).
+The package has not been tested on Windows or MacOS and as such, I cannot give any guarantees for these operating systems.
+When you have issues in that regard, feel free to open an Issue and I will try to assist you in debugging the issue,
+even though I do not have access to one of those operating systems.
+
+I currently do not know how this package behaves when Emacs is run inside a terminal or when used inside [[https://github.com/ch11ng/exwm][exwm]].
+
+Note that whether focusing frames works properly is dependent on the window manager used.
+See the variable =perject-raise-and-focus-frame=.
+
+* Comparison to other Packages
+There exist no packages that offer the same functionality of perject, but some provide a small subset of it:
+- perject.el (built-in): Despite the name, this refers to *software projects* (e.g. a git repository) and not arbitrary projects in the sense I defined above.
+  As such, the package has nothing to do with /perject/.
+- [[https://github.com/florommel/bufferlo][bufferlo]]: This defines a buffer list per frame, which can be restored with /desktop.el/.
+  Therefore, this package is probably closest to /perject/ in terms of functionality, but instead of the notion of projects and collections
+  you just have frames. Functionality like =perject-auto-add-hooks=, tab support etc. seems to be missing from this package.
+- [[https://github.com/mclear-tools/tabspaces][tabspaces]]: This package is similar to perject in that it provides "buffer-isolated workspaces".
+  It also integrates with /tab-tab.el/ just like /perject-tab/.
+  The main difference is again what is considered a project in that this package solely focuses on software projects and not on the generalized version provided by perject.
+- [[https://github.com/alphapapa/burly.el][burly]]: This package allows saving and restoring frames and window configurations in Emacs.
+  It has no notion of projects or collections.
+
+* State of the Package
+The development of the package began roughly two years ago, when it originally started as a thin wrapper around /desktop.el/.
+Since then I have significantly improved the functionality and scope of the package to become *the* Emacs project management package I always wanted.
+I can confidently say that the package works without any bugs for my day to day usage.
+However, due to the sheer size and customization options of this package I am also quite certain that there are still some bugs.
+
+I appreciate your comments and issues, though I may not be able to answer everything due to time constraints.

@@ -180,9 +180,9 @@ See the demonstrations above for how this looks (when used together with a packa
 ** Command Line Option
 Perject adds a new command line option to Emacs.
 After passing the argument =--perject=, the user may list the collections (comma separated) that should be loaded after Emacs has initialized.
-For example, when starting Emacs with =--perject "org,elisp"=, the collections "org" and "elisp" (and all of their projects) will be restored
+For example, when starting Emacs with --perject "org,elisp", the collections "org" and "elisp" (and all of their projects) will be restored
 after opening Emacs.
-Similarly, running Emacs with =--perject ""= prevents perject from automatically opening any collections on startup.
+Similarly, running Emacs with --perject "" prevents perject from automatically opening any collections on startup.
 ** Other Built-In Features
 Note that other features built into Emacs like bookmarks, registers etc. are shared for all projects.
 However, it should not be hard to implement those facilities if desired.
@@ -432,7 +432,7 @@ See the variable =perject-raise-and-focus-frame=.
 
 * Comparison to other Packages
 There exist no packages that offer the same functionality of perject, but some provide a small subset of it:
-- perject.el (built-in): Despite the name, this refers to *software projects* (e.g. a git repository) and not arbitrary projects in the sense I defined above.
+- project.el (built-in): The package deals with *software projects* (e.g. a git repository) and not arbitrary projects in the sense I defined above.
   As such, the package has nothing to do with /perject/.
 - [[https://github.com/florommel/bufferlo][bufferlo]]: This defines a buffer list per frame, which can be restored with /desktop.el/.
   Therefore, this package is probably closest to /perject/ in terms of functionality, but instead of the notion of projects and collections

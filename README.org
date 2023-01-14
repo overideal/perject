@@ -161,6 +161,8 @@ It displays the project and collection name (and some information about the tabs
 Because displaying this information (which is independent of the current buffer) clutters the screen with redudant information, I suggest using something like [[https://github.com/qaiviq/echo-bar.el][echo-bar]] and configure it to display =mode-line-misc-info=.
 In that way, the information is only displayed once at the bottom of the screen and not for every buffer in the frame.
 
+See the demonstrations above for how this looks (when used together with a package like [[https://github.com/qaiviq/echo-bar.el][echo-bar]]).
+
 There is also an extra indicator for the mode line =perject-mode-line-current=,
 that can be added to =mode-line-format= like so:
 #+BEGIN_SRC emacs-lisp
@@ -175,7 +177,6 @@ that can be added to =mode-line-format= like so:
 		(vc-mode vc-mode)
 		"  " mode-line-modes mode-line-misc-info mode-line-end-spaces))
 #+END_SRC
-See the demonstrations above for how this looks (when used together with a package like [[https://github.com/qaiviq/echo-bar.el][echo-bar]]).
 
 ** Command Line Option
 Perject adds a new command line option to Emacs.
@@ -222,10 +223,12 @@ Then you can load the package as follows:
 #+END_SRC
 
 * Default Configuration
+Here we outline a possible configuration for /perject/, which should be put into the user's Emacs configuration file.
 *perject* does not define any keybindings (except via transient), so this must be done in the user's configuration.
 Of course, the user might want to change the keybindings defined below.
 #+BEGIN_SRC emacs-lisp
 (use-package perject
+  ;; :straight or :load-path
   :after savehist
   :init
   ;; Make perject load the collections that were previously open.
@@ -250,8 +253,11 @@ Of course, the user might want to change the keybindings defined below.
 		("<C-next>" . perject-delete)))
 #+END_SRC
 
-The built-in *savehist* package is used to save and restore variables that get otherwise restored by =desktop.el=.
-If =perject-load-at-startup= is set to /'previous/, then you need to add the following lines of code to your Emacs configuration file:
+A mode line entry displaying the current collection, project and tabs (when using /perject-tab.el/) is enabled by default.
+The extra mode line entry =perject-mode-line-current= can be added to the mode line (see above).
+
+If =perject-load-at-startup= is set to 'previous, then you need to use the built-in *savehist* package
+in order to save and restore its value like so:
 #+BEGIN_SRC emacs-lisp
 (use-package savehist
   :config
@@ -261,7 +267,12 @@ If =perject-load-at-startup= is set to /'previous/, then you need to add the fol
 #+END_SRC
 
 Note that *savehist* can furthermore be used to restore global variables that do not have a different value per project.
-You might want to save and restore some global variables by adding the following lines to the previous =:config= block:
+When using /desktop.el/ with the default configuration, certain global variables are saved to the desktop file.
+Because every collection corresponds to one desktop file, keeping these settings would mean that the the value of these global variables
+is determined by the collection most recently loaded. In other words, the previous value of these global variables (which might have changed
+while using Emacs) is overwritten with that saved in the desktop file whenever a new collection is loaded.
+Therefore, /perject/ does not restore these global variables.
+Instead, you can use /savehist/ for that purpose by adding the following lines to the previous =:config= block:
 #+BEGIN_SRC emacs-lisp
 (add-to-list 'savehist-additional-variables 'tag-file-name)
 (add-to-list 'savehist-additional-variables 'tags-table-list)

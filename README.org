@@ -339,7 +339,7 @@ The following snippet also binds some keys.
 * Customization
 The variables are extensively documented and should be self-explanatory.
 Use =M-x customize-group perject= and =M-x customize-group perject-tab= to view them.
-You can customize the faces used by perject via ==M-x customize-group perject-faces=.
+You can customize the faces used by perject via =M-x customize-group perject-faces=.
 
 We mention a couple of special customization options.
 
@@ -442,15 +442,29 @@ Note that whether focusing frames works properly is dependent on the window mana
 See the variable =perject-raise-and-focus-frame=.
 
 * Comparison to other Packages
-There exist no packages that offer the same functionality of perject, but some provide a small subset of it:
+Here we compare the functionality and implementation of perject with that of related packages:
 - project.el (built-in): The package deals with *software projects* (e.g. a git repository) and not arbitrary projects in the sense I defined above.
   As such, the package has nothing to do with /perject/.
-- [[https://github.com/florommel/bufferlo][bufferlo]]: This defines a buffer list per frame, which can be restored with /desktop.el/.
-  Therefore, this package is probably closest to /perject/ in terms of functionality, but instead of the notion of projects and collections
-  you just have frames. Functionality like =perject-auto-add-hooks=, tab support etc. seems to be missing from this package.
+- [[https://github.com/nex3/perspective-el][perspective]]: This package is quite similar to /perject/.
+  However, there are some key differences. First of all, /perspective/ has no notion of collections, so there is no obvious way to group related projects together.
+  Furthermore, in /perject/, every collection then is saved to a desktop file and you can load certain collections at startup and manually open additional ones when you need them.
+  This makes you more flexible, because you can manually load collections as required instead of loading them at startup. To my knowledge, this is not possible in /perspective/.
+  You can also decide which collections to save and load in perject, whereas in perspective, you always save or load all projects.
+  Another important point is that /perject/ uses the built-in /desktop.el/, but /perspective/ does not.
+  Second, in /perspective/, every frame has a distinct list of projects. In contrast, you can switch to any project from within any frame in /perject/.
+  /perject/ also provides some heuristics to automatically add buffers to projects (see =perject-auto-add-hooks=). Because of this, at least in my usage of perject, I rarely have to manually call =perject-add-buffer-to-project=.
+  Another difference between the two packages are tabs ("window configurations"). /perject/ uses the built-in /tab-bar.el/ under the hood and every project has a distinct list of window configurations, whereas in /perspective/ you only have a single window configuration per project.
+  /perject/ offers some additional features not existent in /perspective/ like a notion of state of tabs (which determine whether a tab is updated or not when switching away from it, see third demo), a command line option and the ability to reload collections.
+  On the other hand, /perspective/ allows having one scratch buffer per project. perject has no such feature.
+  Finally, /perspective/ is more mature.
+- project.el (built-in): The package deals with *software projects* (e.g. a git repository) and not arbitrary projects in the sense I defined above.
+  As such, the package has nothing to do with /perject/.
+- [[https://github.com/florommel/bufferlo][bufferlo]]: This package defines a buffer list per frame, which can be restored with /desktop.el/.
+  Therefore, this package is also quite close to /perject/ in terms of functionality, but instead of the notion of projects and collections
+  you just have frames. Functionality like =perject-auto-add-hooks=, tab support etc. are not offered by this package.
 - [[https://github.com/mclear-tools/tabspaces][tabspaces]]: This package is similar to perject in that it provides "buffer-isolated workspaces".
   It also integrates with /tab-tab.el/ just like /perject-tab/.
-  The main difference is again what is considered a project in that this package solely focuses on software projects and not on the generalized version provided by perject.
+  The main difference is what is considered a project in that this package solely focuses on software projects and not on the generalized version provided by /perject/.
 - [[https://github.com/alphapapa/burly.el][burly]]: This package allows saving and restoring frames and window configurations in Emacs.
   It has no notion of projects or collections.
 

@@ -457,8 +457,6 @@ Here we compare the functionality and implementation of perject with that of rel
   /perject/ offers some additional features not existent in /perspective/ like a notion of state of tabs (which determine whether a tab is updated or not when switching away from it, see third demo), a command line option and the ability to reload collections.
   On the other hand, /perspective/ allows having one scratch buffer per project. perject has no such feature.
   Finally, /perspective/ is more mature.
-- project.el (built-in): The package deals with *software projects* (e.g. a git repository) and not arbitrary projects in the sense I defined above.
-  As such, the package has nothing to do with /perject/.
 - [[https://github.com/florommel/bufferlo][bufferlo]]: This package defines a buffer list per frame, which can be restored with /desktop.el/.
   Therefore, this package is also quite close to /perject/ in terms of functionality, but instead of the notion of projects and collections
   you just have frames. Functionality like =perject-auto-add-hooks=, tab support etc. are not offered by this package.

@@ -1,5 +1,9 @@
 * Summary
 This package allows the user to manage multiple projects in a single Emacs instance.
+It uses the built-in *desktop.el* package to save and restore collections
+(i.e. user-defined groups of window configurations, frames and buffers) over Emacs restarts.
+It also gives you commands to work with these projects (e.g. create them, switch to a buffer within the project, cycle the window configurations ("tabs") belonging to the project, etc.).
+Many more features are provided, see below.
 
 The name is a play on "per project", since this package manages frames, buffers and tabs per project.
 
@@ -441,10 +445,27 @@ I currently do not know how this package behaves when Emacs is run inside a term
 Note that whether focusing frames works properly is dependent on the window manager used.
 See the variable =perject-raise-and-focus-frame=.
 
+* Comparison to project.el
+The built-in *project.el* package might seem quite similar to *perject*.
+However, this is not the case. The main difference is what is considered a "project".
+In project.el, every project has a "root directory" in which the files belonging to the project are supposed to live.
+In contrast, there is no such assumption in perject.
+Projects are completely user-defined and it does not matter where a file is actually located on the file system (also see above "Terminology").
+As such, one can say that the two packages *focus on different kinds of projects*.
+Project.el focuses on projects that are identified "programatically" (usually by being within the same directory, e.g. a git respository),
+whereas perject has a more "ad-hoc", generalized notion of projects.
+Note that because projects are saved over restarts and some commands automatically add a buffer to a project
+(see =perject-auto-add-hooks=), it is only rarely necessary for the user to manually add a buffer to a particular project.
+
+Therefore, one can use project.el alongside perject, in particular since it defines commands like =project-find-regexp= which are not provided by perject.
+
+To sum up, if your projects are always given by a collection of files within a root directory,
+then you project.el will probably suffice for your needs; potentially enhanced by some package like [[https://github.com/mclear-tools/tabspaces][tabspaces]] or [[https://github.com/fritzgrabo/project-tab-groups][project-tab-groups]].
+If however you want a more generalized notion of projects that can be grouped into collections, are preserved over restarts
+and "naturally" grow as you open and close files, then perject might just be the package for you.
+
 * Comparison to other Packages
-Here we compare the functionality and implementation of perject with that of related packages:
-- project.el (built-in): The package deals with *software projects* (e.g. a git repository) and not arbitrary projects in the sense I defined above.
-  As such, the package has nothing to do with /perject/.
+Here we compare the functionality and implementation of perject with that of related packages (which are not based on project.el):
 - [[https://github.com/nex3/perspective-el][perspective]]: This package is quite similar to /perject/.
   However, there are some key differences. First of all, /perspective/ has no notion of collections, so there is no obvious way to group related projects together.
   Furthermore, in /perject/, every collection then is saved to a desktop file and you can load certain collections at startup and manually open additional ones when you need them.
@@ -460,10 +481,8 @@ Here we compare the functionality and implementation of perject with that of rel
 - [[https://github.com/florommel/bufferlo][bufferlo]]: This package defines a buffer list per frame, which can be restored with /desktop.el/.
   Therefore, this package is also quite close to /perject/ in terms of functionality, but instead of the notion of projects and collections
   you just have frames. Functionality like =perject-auto-add-hooks=, tab support etc. are not offered by this package.
-- [[https://github.com/mclear-tools/tabspaces][tabspaces]]: This package is similar to perject in that it provides "buffer-isolated workspaces".
-  It also integrates with /tab-tab.el/ just like /perject-tab/.
-  The main difference is what is considered a project in that this package solely focuses on software projects and not on the generalized version provided by /perject/.
-- [[https://github.com/alphapapa/burly.el][burly]]: This package allows saving and restoring frames and window configurations in Emacs.
+- [[https://github.com/alphapapa/burly.el][burly]]: This package allows saving and restoring frames and window configurations in Emacs,
+  similar to the built-in package desktop.el. It also adds the ability to "bookmark" these features.
   It has no notion of projects or collections.
 
 * State of the Package

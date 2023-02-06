@@ -460,7 +460,7 @@ Note that because projects are saved over restarts and some commands automatical
 Therefore, one can use project.el alongside perject, in particular since it defines commands like =project-find-regexp= which are not provided by perject.
 
 To sum up, if your projects are always given by a collection of files within a root directory,
-then you project.el will probably suffice for your needs; potentially enhanced by some package like [[https://github.com/mclear-tools/tabspaces][tabspaces]] or [[https://github.com/fritzgrabo/project-tab-groups][project-tab-groups]].
+then project.el will probably suffice for your needs; potentially enhanced by some package like [[https://github.com/mclear-tools/tabspaces][tabspaces]] or [[https://github.com/fritzgrabo/project-tab-groups][project-tab-groups]].
 If however you want a more generalized notion of projects that can be grouped into collections, are preserved over restarts
 and "naturally" grow as you open and close files, then perject might just be the package for you.
 

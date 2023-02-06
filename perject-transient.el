@@ -65,7 +65,7 @@ kill-buffers:
 - nil: Keep the buffers.
 - t: Kill all buffers belonging to the closed collection and to no other
   collection or project.
-- 'all: Kill all buffers belonging to the closed collection.
+- \\='all: Kill all buffers belonging to the closed collection.
 
 Every element of the list may also be a function, in which case it is called
 before closing the collection with the collection name as its only argument and
@@ -104,7 +104,7 @@ When reloading, the frames may be reused for the reloaded collection.
 Only the frames that have not been reused are affected by this variable.
 - nil: After reloading, remove the frames that were not reused from the
   collection (but do not delete them).
-- 'keep: Keep the frames and their associations with the collection or one of
+- \\='keep: Keep the frames and their associations with the collection or one of
   its projects.
 - t: After reloading, delete the frames that have not been reused. In case these
   are all existent frames, remove them from the collection instead.
@@ -113,7 +113,7 @@ kill-buffers:
 - nil: Keep the buffers.
 - t: Before reloading the collection, kill all its buffers that do not belong to
   any other collection or project.
-- 'all: Before reloading the collection, kill all its buffers.
+- \\='all: Before reloading the collection, kill all its buffers.
 
 Every element of the list may also be a function, in which case it is called
 before reloading the collection with the collection name as its only argument
@@ -158,11 +158,11 @@ kill-buffers:
 - nil: Keep the buffers.
 - t: Kill all buffers belonging to the deleted collection or project and to no
   other collection or project.
-- 'all: Kill all buffers belonging to the deleted collection or project.
+- \\='all: Kill all buffers belonging to the deleted collection or project.
 
-The second kill-frames may also have the value 'keep, in which case the frames
-are removed from the deleted project but not from its collection (and are not
-killed).
+The second kill-frames may also have the value \\='keep, in which case the
+frames are removed from the deleted project but not from its collection (and are
+not killed).
 Every element of the list may also be a function, in which case it is called
 before deleting the collection (or project) with the collection name (or
 project) as its only argument. Its return value must be one of the above values

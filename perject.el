@@ -5,8 +5,22 @@
 ;; Author: overideal
 ;; Maintainer: overideal
 ;; Version: 3.2
-;; Package-Requires: ((emacs "27.1") (dash "2.12"))
+;; Package-Requires: ((emacs "27.1") (dash "2.10"))
 ;; Homepage: https://github.com/overideal/perject
+
+;; This program is free software: you can redistribute it and/or modify it under
+;; the terms of the GNU General Public License as published by the Free Software
+;; Foundation, either version 3 of the License, or (at your option) any later
+;; version.
+
+;; This program is distributed in the hope that it will be useful, but WITHOUT
+;; ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+;; FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
+;; details.
+
+;; You should have received a copy of the GNU General Public License along with
+;; this program. If not, see <https://www.gnu.org/licenses/>.
+
 
 ;;; Commentary:
 
@@ -30,9 +44,9 @@
 
 (defconst perject-command-line-option "--perject"
   "Command line option which if present overwrites `perject-load-at-startup'.
-For example, if Emacs is launched with '--perject \"project 1,project 2\"', the
-projects \"project 1\" and \"project 2\" are loaded.
-Write '--perject \"\"' if no projects should be opened.")
+For example, if Emacs is launched with \\='--perject \"project 1,project
+2\"\\=', the projects \"project 1\" and \"project 2\" are loaded.
+Write \\='--perject \"\"\\=' if no projects should be opened.")
 
 
 ;;;; Customization
@@ -53,7 +67,7 @@ This in particular includes the desktop files."
 
 It may have one of the following values:
 - nil: Do not switch to the newly created collection.
-- 'new: Switch to the newly created collection in a new frame.
+- \\='new: Switch to the newly created collection in a new frame.
 - t: Switch to the newly created collection within the selected frame."
   :type '(choice
 		  (const :tag "Do not switch to the newly created collection" nil)
@@ -65,12 +79,12 @@ It may have one of the following values:
 
 It may have one of the following values:
 - nil: Load no collection.
-- 'all: Load all collections.
+- \\='all: Load all collections.
 - A list of collection names: Load the specified collections (if existent). If a
   name in the list does not correspond to an existing project, do nothing. As a
-  special case, if the first element of the list is 'not, all collections but
+  special case, if the first element of the list is \\='not, all collections but
   the ones specified in the list are loaded.
-- 'previous: Load the collections that were open at the end of the previous
+- \\='previous: Load the collections that were open at the end of the previous
   session.
 - A function: The function is called with two arguments, namely the list of
   collections opened in the previous Emacs session and the list of all
@@ -79,13 +93,12 @@ It may have one of the following values:
 
 The order in which the collections are loaded is determined as follows: In the
 list or function case, the collections are loaded \"from left to right\". If the
-value is 'previous, use the current order of the collections, which by default
-goes from \"older\" to \"newer\". Using the command `perject-sort-collections',
-they can be manually sorted, which will be remembered over restarts of Emacs.
+value is \\='previous, use the current order of the collections, which can be
+changed using the command `perject-sort'.
 
-In order for the 'previous option to work properly, add the following line to
+In order for the \\='previous option to work properly, add the following line to
 your Emacs configuration file:
-\(add-to-list 'savehist-additional-variables 'perject--previous-collections)."
+\(add-to-list \\='savehist-additional-variables \\='perject--previous-collections)."
   :type '(choice
 		  (const :tag "Load no collection" nil)
 		  (const :tag "Load all collections" all)
@@ -104,10 +117,10 @@ your Emacs configuration file:
 
 It may have one of the following values:
 - nil: Don't save any collections.
-- 'all: Save all active collections.
-- 'recent: Save all collections that were open in the previous Emacs session.
+- \\='all: Save all active collections.
+- \\='recent: Save all collections that were open in the previous Emacs session.
 - A list of collection names: Save the specified collection (if active). As a
-  special case, if the first element of the list is 'not, all active collections
+  special case, if the first element of the list is \\='not, all active collections
   but the ones specified in the list are saved upon exiting Emacs.
 - A function: The function is called with two arguments, namely the list of
   collections opened in the previous Emacs session and the list of active
@@ -127,8 +140,8 @@ The value of the variable must be a list, which is of the following form:
 
 The first element serves as the default value. If it is nil, the frames
 belonging to the collections are not saved to their desktop files. If it is
-'ask, the user is asked whether the frames should be saved for every collection.
-Otherwise, the frames of every collection are saved.
+\\='ask, the user is asked whether the frames should be saved for every
+collection. Otherwise, the frames of every collection are saved.
 The remaining elements of the list define exceptions to this rule. Each of the
 entries is a dotted pair with car the collection name and cdr one of the
 possible values of the default value. The cdr overwrites the behavior of the
@@ -157,8 +170,8 @@ write a custom function to manually raise and focus a frame.
 
 This variable may have one of the following values:
 - nil: Do not perform any manual raising or focusing.
-- 'open: Raise and focus the frame first restored by `perject-open'.
-- 'init: Raise and focus the first frame of the collection that was last
+- \\='open: Raise and focus the frame first restored by `perject-open'.
+- \\='init: Raise and focus the first frame of the collection that was last
   restored at startup.
 - t: Raise and focus the frame in both `perject-open' and at
   startup."
@@ -178,14 +191,14 @@ This variable may have one of the following values:
 The value of this variable is a list which may contain any of the following
 symbols, whose presence in the list leads to a message being printed in the
 indicated command:
-- 'save: `perject-save'
-- 'add-buffer: `perject-add-buffer-to-project',
-- 'remove-buffer: `perject-remove-buffer-from-project',
-- 'switch: `perject-switch',
-- 'next-collection `perject-next-collection',
-- 'previous-collection `perject-previous-collection',
-- 'next-project: `perject-next-project',
-- 'previous-project: `perject-previous-project'."
+- \\='save: `perject-save'
+- \\='add-buffer: `perject-add-buffer-to-project',
+- \\='remove-buffer: `perject-remove-buffer-from-project',
+- \\='switch: `perject-switch',
+- \\='next-collection `perject-next-collection',
+- \\='previous-collection `perject-previous-collection',
+- \\='next-project: `perject-next-project',
+- \\='previous-project: `perject-previous-project'."
   :type '(set
 		  (const :tag "`perject-save'" save)
 		  (const :tag "`perject-add-buffer-to-project'" add-buffer)
@@ -516,7 +529,8 @@ This has an effect when selecting a collection or project and only if
 `perject-tab' is loaded.")
 
 (defface perject-project-annotator-frames '((t :inherit completions-annotations))
-  "The face used for displaying the number of frames when selecting a collection or project.")
+  "The face used for displaying the number of frames.
+This has an effect when selecting a collection or project.")
 
 
 ;;;; Internal Variables
@@ -1416,10 +1430,10 @@ The collection and directory need not actually exist."
 
 (defun perject-get-collections (&optional scope)
   "Return a list containing the names of all collections.
-Each collection is represented as a directory in `perject-directory'. If SCOPE
-is 'active, only return the active collections; i.e. those which are currently
-loaded. If SCOPE is 'inactive, return all collections that are not active at the
-moment."
+Each collection is represented as a directory in `perject-directory'.
+If SCOPE is \\='active, only return the active collections; i.e. those which are
+currently loaded. If SCOPE is \\='inactive, return all collections that are not
+active at the moment."
   (if (eq scope 'active)
 	  (mapcar 'car perject-collections)
 	(let ((col
@@ -1442,7 +1456,7 @@ More precisely, the list contains dotted pairs with car the respective
 collection name and cdr the project name.
 COLLECTION is a string denoting a collection. If COLLECTION is nil, use the
 current collection if there is one. If there is no current collection or
-COLLECTION is 'all, return the projects of all active collections."
+COLLECTION is \\='all, return the projects of all active collections."
   (cl-flet ((fun (list) (mapcar (apply-partially #'cons (car list)) (cdr list))))
 	(let ((collection (or collection (car (perject-current)))))
 	  (if (stringp collection)
@@ -1538,9 +1552,9 @@ If not, throw an error. If nil, FRAME defaults to the selected frame."
 TYPE may have one of the following values, which determines the available
 candidates:
 - a list of collections
-- 'active: active collections
-- 'inactive: inactive collections
-- 'all: all collections
+- \\='active: active collections
+- \\='inactive: inactive collections
+- \\='all: all collections
 PROMPT, PREDICATE, REQUIRE-MATCH and DEF have the same meaning as for
 `completing-read'.
 In some cases, it might be desirable to check if DEF passes PREDICATE.
@@ -1622,9 +1636,9 @@ The arguments are the same as for `perject--get-collection-name', except for
 TYPE. It may have one of the following values:
 - a list of dotted pairs (collection . project)
 - a collection name: only those projects belonging to that collection
-- 'current: only those projects belonging to the current collection;
-  if there is no current collection, behave like 'all
-- 'all: all projects from all active collections."
+- \\='current: only those projects belonging to the current collection;
+  if there is no current collection, behave like \\='all
+- \\='all: all projects from all active collections."
   (let* ((candidates
 		  (pcase type
 			('all (perject-get-projects 'all))
@@ -1929,11 +1943,12 @@ This is achieved using the deserializer as specified in
 		  '%s'. Check `perject-global-vars-to-save'" sym name)))))
 
 ;; Printing the message directly within this function does not give the desired
-;; result, so we temporarily overwrite `perject--previous-collections'.
+;; result, so we temporarily overwrite `perject--previous-collections' in order
+;; to print the message later.
 (defun perject--desktop-info (name)
   "Generate information about the collection named NAME that was just restored.
-This also sets `inhibit-message' and `message-log-max' (which were locally bound
-when this function is called).
+This also sets the variables `inhibit-message' and `message-log-max' (which were
+locally bound when this function is called).
 Never call this function manually."
   ;; Code adapted from `desktop-read'.
   ;; We access the variables from `desktop-read'.

@@ -75,16 +75,16 @@ tabs than to ordinary ones."
 The value of this variable is a list which may contain any of the following
 symbols, whose presence in the list leads to a message being printed in the
 indicated command:
-- 'create: `perject-tab-create',
-- 'delete: `perject-tab-delete',
-- 'cycle-state: `perject-tab-cycle-state',
-- 'set: `perject-tab-set'
-- 'reset: `perject-tab-reset',
-- 'index: `perject-tab-increment-index', `perject-tab-decrement-index',
-- 'switch: `perject-tab-switch',
-- 'next: `perject-tab-next',
-- 'previous: `perject-tab-previous',
-- 'recent: `perject-tab-recent'."
+- \\='create: `perject-tab-create',
+- \\='delete: `perject-tab-delete',
+- \\='cycle-state: `perject-tab-cycle-state',
+- \\='set: `perject-tab-set'
+- \\='reset: `perject-tab-reset',
+- \\='index: `perject-tab-increment-index', `perject-tab-decrement-index',
+- \\='switch: `perject-tab-switch',
+- \\='next: `perject-tab-next',
+- \\='previous: `perject-tab-previous',
+- \\='recent: `perject-tab-recent'."
   :type '(set
 		  (const :tag "`perject-tab-create'" create)
 		  (const :tag "`perject-tab-delete'" delete)
@@ -148,11 +148,11 @@ only have an effect if `perject-tab-mode-line-format' is set to that function."
   "This variable determines the new index after deleting a tab.
 This influences the command `perject-tab-delete'.
 It may have one of the following values:
-- 'next: Use the next index.
-- 'previous: Use the previous index.
-- 'recent-next: Use the index of the most recently selected tab after deleting.
-  If there is no recent index, use the next index.
-- 'recent-previous: Use the index of the most recently selected tab after
+- \\='next: Use the next index.
+- \\='previous: Use the previous index.
+- \\='recent-next: Use the index of the most recently selected tab after
+  deleting. If there is no recent index, use the next index.
+- \\='recent-previous: Use the index of the most recently selected tab after
   deleting. If there is no recent index, use the previous index.
 After deleting, perject will also switch to the corresponding tab if
 `perject-tab-switch-after-delete' is non-nil.
@@ -475,7 +475,7 @@ switching) allows it (see `perject-tab-states'), also update its value to the
 current window configuration.
 This is the behavior in interactive use, but when called as a function it is
 influenced by the optional argument FORCE-UPDATE. If it is nil, behave as above.
-If it is t, always update and if it is 'ignore, never update the old tab.
+If it is t, always update and if it is \\='ignore, never update the old tab.
 If MSG is non-nil, also print a message. In interactive use, this is determined
 by the value of `perject-tab-messages'.
 After switching tabs, this function runs the hook
@@ -586,8 +586,8 @@ It may also be nil, in which case it defaults to the current project."
 
 (defun perject-tab-index (symbol &optional proj frame)
   "Return the index of SYMBOL for project PROJ in the frame FRAME.
-SYMBOL may be 'current or 'recent, which references the current or most recent
-index of FRAME, respectively. If FRAME is nil, use the current frame.
+SYMBOL may be \\='current or \\='recent, which references the current or most
+recent index of FRAME, respectively. If FRAME is nil, use the current frame.
 PROJ is a dotted pair with car a collection and cdr a project name.
 It may also be nil, in which case it defaults to the current project."
   (let ((proj (or proj (perject-current))))
@@ -596,8 +596,8 @@ It may also be nil, in which case it defaults to the current project."
 
 (defun perject-tab-set-index (symbol num &optional proj frame)
   "Set the index of SYMBOL to NUM for project PROJ in the frame FRAME.
-SYMBOL may be 'current or 'recent, which references the current or most recent
-index of FRAME, respectively. NUM is a number or nil, in which case the
+SYMBOL may be \\='current or \\='recent, which references the current or most
+recent index of FRAME, respectively. NUM is a number or nil, in which case the
 respective index is set to that value. If FRAME is nil, use the current frame.
 PROJ is a dotted pair with car a collection and cdr a project name.
 It may also be nil, in which case it defaults to the current project."

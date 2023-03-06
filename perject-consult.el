@@ -1,5 +1,20 @@
 ;;; perject-consult.el --- Consult integration for Perject -*- lexical-binding: t -*-
 
+;; Copyright (C) 2022, 2023 overideal
+
+;; This program is free software: you can redistribute it and/or modify it under
+;; the terms of the GNU General Public License as published by the Free Software
+;; Foundation, either version 3 of the License, or (at your option) any later
+;; version.
+
+;; This program is distributed in the hope that it will be useful, but WITHOUT
+;; ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+;; FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
+;; details.
+
+;; You should have received a copy of the GNU General Public License along with
+;; this program. If not, see <https://www.gnu.org/licenses/>.
+
 
 ;;; Commentary:
 
@@ -13,7 +28,10 @@
 ;;; Code:
 
 (require 'perject)
-(require 'consult)
+
+;; Silence the byte compiler.
+(declare-function consult--buffer-query "consult")
+(declare-function consult--buffer-state "consult")
 
 
 (defvar perject-consult--source-project-buffer
@@ -32,7 +50,8 @@
 		(when (perject-current)
 		  (lambda (buffer) (perject-is-assoc-with buffer (perject-current))))
         :as #'buffer-name)))
-  "Buffer candidate source of buffers belonging to the current project for `consult-buffer'.")
+  "Buffer candidate source of buffers belonging to the current project.
+This is a buffer candidate source for `consult-buffer'.")
 
 (defvar perject-consult--source-collection-buffer
   `(:name     "Collection Buffer"
@@ -51,7 +70,8 @@
 		(when (perject-current)
 		  (lambda (buffer) (perject-is-assoc-with buffer (car (perject-current)))))
         :as #'buffer-name)))
-  "Buffer candidate source of buffers belonging to the current collection for `consult-buffer'.")
+  "Buffer candidate source of buffers belonging to the current collection.
+This is a buffer candidate source for `consult-buffer'.")
 
 
 (provide 'perject-consult)

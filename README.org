@@ -96,7 +96,7 @@ A project can also be reloaded using =perject-reload=. This means that any chang
 For convenience, these commands are combined into the command =perject-open-close-or-reload= (see its documentation).
 
 After opening a collection, the user may create a new project using =perject-switch=.
-The same command is also used to create new projects.
+The command is also used to switch to an existing project of the current collection.
 
 After creating a project, you may want to create a new frame for it (=perject-create-new-frame=) or add various buffers to the project.
 The latter is achieved using the command =perject-add-buffer-to-project=.

@@ -1,5 +1,20 @@
 ;;; perject-tab.el --- Tab-tab integration for Perject -*- lexical-binding: t -*-
 
+;; Copyright (C) 2022, 2023 overideal
+
+;; This program is free software: you can redistribute it and/or modify it under
+;; the terms of the GNU General Public License as published by the Free Software
+;; Foundation, either version 3 of the License, or (at your option) any later
+;; version.
+
+;; This program is distributed in the hope that it will be useful, but WITHOUT
+;; ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+;; FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
+;; details.
+
+;; You should have received a copy of the GNU General Public License along with
+;; this program. If not, see <https://www.gnu.org/licenses/>.
+
 
 ;;; Commentary:
 
@@ -501,7 +516,7 @@ After switching tabs, this function runs the hook
 	  ;; need (e.g. when another frame wants to display that same tab).
 	  ;; This can either be solved by manually switching the offending value
 	  ;; back or by locally overwriting a function. We use the second approach.
-	  (cl-letf (((symbol-function 'tab-bar--current-tab-make) (cl-constantly current)))
+	  (cl-letf (((symbol-function 'tab-bar--current-tab-make) (lambda (&rest _) current)))
 		(tab-bar-select-tab num))
 	  ;; After restoring a tab from the desktop, many entries of the tab (e.g.
 	  ;; the window configuration wc) are nil. In that case, we refresh the tab

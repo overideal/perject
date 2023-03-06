@@ -5,7 +5,7 @@
 ;; Author: overideal
 ;; Maintainer: overideal
 ;; Version: 3.2
-;; Package-Requires: ((emacs "27.1") (dash "2.10"))
+;; Package-Requires: ((emacs "27.1") (dash "2.10") (transient "0.3.7"))
 ;; Homepage: https://github.com/overideal/perject
 
 ;; This program is free software: you can redistribute it and/or modify it under
@@ -38,6 +38,11 @@
 (require 'seq)
 (require 'dash)
 (require 'desktop)
+
+;; Silence the byte compiler.
+(defvar savehist-additional-variables)
+(defvar desktop-buffer-ok-count)
+(defvar desktop-buffer-fail-count)
 
 
 ;;;; Constants
@@ -1435,13 +1440,13 @@ If SCOPE is \\='active, only return the active collections; i.e. those which are
 currently loaded. If SCOPE is \\='inactive, return all collections that are not
 active at the moment."
   (if (eq scope 'active)
-	  (mapcar 'car perject-collections)
+	  (mapcar #'car perject-collections)
 	(let ((col
 		   (and
 			(file-exists-p perject-directory)
 			(remove ".."
 					(remove "."
-							(mapcar 'car
+							(mapcar #'car
 									(cl-remove-if-not
 									 (lambda (elem)
 									   (eq (cadr elem) t))
@@ -1605,7 +1610,7 @@ string is interpreted to refer to the default value."
 							(length (perject-get-buffers str))
 							(if (not (eq (length (perject-get-buffers str)) 1)) "s" ""))
 					'face 'perject-project-annotator-buffers)
-				   (when (featurep 'perject-tab)
+				   (when (fboundp 'perject-tab-collection-tabs)
 					   (concat
 						(propertize " " 'display '(space :align-to (+ center 10)))
 						(propertize
@@ -1632,8 +1637,9 @@ string is interpreted to refer to the default value."
 (defun perject--get-project-name
 	(prompt type &optional predicate require-match def no-candidate empty-string)
   "Ask the user for a project name using `completing-read' and return it.
-The arguments are the same as for `perject--get-collection-name', except for
-TYPE. It may have one of the following values:
+PROMPT, PREDICATE, REQUIRE-MATCH, DEF, NO-CANDIDATE and EMPTY-STRING are the
+ same as for `perject--get-collection-name'.
+TYPE may have one of the following values:
 - a list of dotted pairs (collection . project)
 - a collection name: only those projects belonging to that collection
 - \\='current: only those projects belonging to the current collection;
@@ -1668,7 +1674,7 @@ TYPE. It may have one of the following values:
 							  (length (perject-get-buffers proj))
 							  (if (not (eq (length (perject-get-buffers proj)) 1)) "s" ""))
 					  'face 'perject-project-annotator-buffers)
-					 (when (featurep 'perject-tab)
+					 (when (fboundp 'perject-tab-tabs)
 					   (concat
 						(propertize " " 'display '(space :align-to center))
 						(propertize
@@ -1751,7 +1757,8 @@ collection with the the specified name, an error is thrown."
 (defun perject-mode-line-toggle-current-buffer (event)
   "Toggle the association between the buffer and the project from the mode-line.
 If the current buffer is associated with the current project, remove this
-association. Otherwise, add it."
+association. Otherwise, add it.
+EVENT is a mouse event."
   (interactive "e")
   (when-let ((proj (perject-current))
 			 ((car proj))
@@ -1776,11 +1783,11 @@ Does nothing to projects that are already associated with the buffer."
 		  (perject-add-buffer-to-project buffer project))))))
 
 (defun perject--serialize-mark-ring (value _)
-  "Serialize the mark ring."
+  "Serialize VALUE for the mark ring."
   (mapcar #'marker-position value))
 
 (defun perject--deserialize-mark-ring (value _)
-  "Deserialize the mark ring."
+  "Deserialize VALUE for the mark ring."
   (mapcar #'copy-marker value))
 
 
@@ -1963,7 +1970,7 @@ Never call this function manually."
 				   (format "%d frame%s, "
 						   fn (if (= fn 1) "" "s")))
 			   "")
-			 (if (featurep 'perject-tab)
+			 (if (fboundp 'perject-tab-collection-tabs)
 				 (let ((fn (length (perject-tab-collection-tabs name))))
 				   (format "%d tab%s, " fn (if (= fn 1) "" "s")))
 			   "")

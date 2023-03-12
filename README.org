@@ -1,3 +1,5 @@
+#+html: <a href="https://melpa.org/#/perject"><img alt="MELPA" src="https://melpa.org/packages/perject-badge.svg"/></a>
+
 * Summary
 This package allows the user to manage multiple projects in a single Emacs instance.
 It uses the built-in *desktop.el* package to save and restore collections
@@ -201,38 +203,16 @@ This package requires at least version 27.1 of GNU Emacs and depends on the foll
 - tab-bar.el (built-in)
 - [[https://github.com/magnars/dash.el][dash.el]]
 
-Since the package is currently not on [[https://melpa.org/][MELPA]], you need to either clone this repository and add it to your load path
-or use a tool like [[https://github.com/radian-software/straight.el][straight.el]].
-I am assuming that you are using the excellent [[https://github.com/jwiegley/use-package][use-package]], which will also be built-into Emacs from version 29 onwards.
-** With Straight.el
+The package is available on [[https://melpa.org/#/perject][MELPA]], so after [[https://melpa.org/#/getting-started][installing]] MELPA, you can directly install *perject* via =package-install=.
 The package manager will take care of installing the dependencies.
-#+BEGIN_SRC emacs-lisp
-(use-package perject
-  :straight (:host github :repo "overideal/perject")
-  ;; The rest of the configuration here...
-  )
-#+END_SRC
-** Manually
-First install [[https://github.com/magnars/dash.el][dash.el]] and if you are using a version of Emacs older than 28.1 also [[https://github.com/magit/transient][transient]].
-Then clone this repository and add its directory to your load path:
-#+BEGIN_SRC emacs-lisp
-(add-to-list 'load-path "your path")
-#+END_SRC
-Then you can load the package as follows:
-#+BEGIN_SRC emacs-lisp
-(use-package perject
-  :load-path "your path"
-  ;; The rest of the configuration here...
-  )
-#+END_SRC
 
 * Default Configuration
 Here we outline a possible configuration for /perject/, which should be put into the user's Emacs configuration file.
 *perject* does not define any keybindings (except via transient), so this must be done in the user's configuration.
 Of course, the user might want to change the keybindings defined below.
+This configuration uses the excellent [[https://github.com/jwiegley/use-package][use-package]], which will be built into Emacs from version 29 onwards.
 #+BEGIN_SRC emacs-lisp
 (use-package perject
-  ;; :straight or :load-path
   :after savehist
   :init
   ;; Make perject load the collections that were previously open.

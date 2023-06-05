@@ -1129,7 +1129,7 @@ this depends on the value of `perject-messages'."
 		   (perject--get-collection-name
 			"Save collection: " 'active nil t (car (perject-current))
 			"No collection to save" "No collection specified"))
-		  (current-prefix-arg 'all)
+		  (current-prefix-arg (perject-get-collections 'active))
 		  (t (car (perject-current))))
 	nil (memq 'save perject-messages)))
   (cond

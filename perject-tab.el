@@ -660,7 +660,11 @@ nil. In the latter case, it defaults to the selected frame."
 							 perject-tab-extra-data))
 				 (mapcar (lambda (data) (cons (car data) (funcall (cdr data))))
 						 perject-tab-extra-data)))))
-	(append (tab-bar--tab frame) extra-data)))
+	(with-selected-frame (or frame (selected-frame))
+	  (save-window-excursion
+		;; Create new window objects to avoid interferences between different tabs.
+		(window-state-put (window-state-get))
+		(append (tab-bar--tab frame) extra-data)))))
 
 (defun perject-tab-collection-tabs (name)
   "Return the list of all tabs belonging to the collection named NAME.

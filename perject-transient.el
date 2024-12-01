@@ -313,8 +313,8 @@ This function runs the hooks `perject-before-reload-hook' and
   "Transient menu to delete a collection or project.
 Deleting a collection encompasses closing the collection (if active) and
 deleting all its projects and the corresponding desktop file.
-Without a prefix argument, the user is asked for a collection to delete.
-Otherwise, the user is asked for a project.
+Without a prefix argument, the user is asked for a project to delete.
+Otherwise, the user is asked for a collection.
 
 When deleting a collection, this function runs the hooks
 `perject-before-delete-collection-hook' and

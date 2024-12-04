@@ -156,11 +156,11 @@ above values above to nil and use `perject-after-reload-hook'."
 
 (defcustom perject-delete-default '(t nil keep nil)
   "The default values for the command `perject-delete'.
-The value of this variable must be a list with two elements:
+The value of this variable must be a list consisting of four elements:
 \(kill-frames kill-buffers kill-frames kill-buffers)
 
 The first two elements have an effect when deleting collections and the other
-two elemens influence deleting projects.
+two elements influence deleting projects.
 
 Their values may be as follows:
 

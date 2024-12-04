@@ -236,8 +236,8 @@ It may have one of the following two values:
 - nil: The title of a frame is not altered by perject.
 - A function: Call the function with a dotted pair as its only argument,
   whose car is a collection name and whose cdr is a project name. The collection
-  name is guaranteed to be non a proper string but the project name could be
-  nil. The function should return a string to be used as the frame title.
+  name is guaranteed to be a proper string but the project name could be nil.
+  The function should return a string to be used as the frame title.
   It may also contain nil to decline naming the frame.
 By default, the function `perject-frame-title' is used."
   :type '(choice

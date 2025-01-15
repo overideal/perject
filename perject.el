@@ -407,7 +407,7 @@ be opened."
 In particular, the projects, buffers and frames belonging to the collection have
 been restored.
 The functions are called with one argument, namely the name of the newly opened
-project."
+collection."
   :type 'hook)
 
 (defcustom perject-before-create-hook nil
@@ -653,13 +653,13 @@ COL is the current collection and PROJ is the current project name."
 						   " ")
                    'face 'perject-mode-line-face)))
 
-(defun perject-frame-title (perj)
-  "Return a string for the frame title of a frame associated with PERJ.
+(defun perject-frame-title (proj)
+  "Return a string for the frame title of a frame associated with PROJ.
 PROJ is a dotted pair with car a collection and cdr a project name.
 This function is used only if `perject-frame-title-format' is t."
-  (concat invocation-name "@" (system-name) ":" (car perj)
-		  (when (cdr perj)
-			(concat "|" (cdr perj)))))
+  (concat invocation-name "@" (system-name) ":" (car proj)
+		  (when (cdr proj)
+			(concat "|" (cdr proj)))))
 
 (defun perject--init ()
   "Load collections from the last session and set up hooks.
@@ -761,7 +761,7 @@ This function is called by `perject-mode' before exiting Emacs (using
 
 (defun perject-create (proj)
   "Create a new collection or project PROJ.
-PROJ may be a collection or a project represented a dotted pair with car a
+PROJ may be a collection or a project represented by a dotted pair with car a
 collection and cdr a project name."
   (run-hook-with-args 'perject-before-create-hook proj)
   (if (stringp proj)

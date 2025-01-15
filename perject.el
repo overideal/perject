@@ -961,7 +961,7 @@ This function runs the hooks `perject-before-delete-project-hook' and
 ;; In particular, the alternative approach would lead to "Buffer is already
 ;; associated with project" errors, if the project in which this function is
 ;; called is already associated with the buffer.
-(defun perject-open (name)
+(defun perject-open (name &optional proj-name)
   "Create or open the collection named NAME.
 This means that all projects that belonged to the collection are restored from
 the corresponding desktop file. Furthermore, this function switches to one of
@@ -974,7 +974,12 @@ Before creating the collection, run `perject-before-create-hook' and afterwards
 run `perject-after-create-hook'.
 If no new collection is created, run the hooks `perject-before-open-hook' and
 `perject-after-open-hook' instead.
-In interactive use, the user is asked for the collection name."
+In interactive use, the user is asked for the collection name.
+For convenience, one may specify a project name PROJ-NAME (it is nil in
+interactive use). In this case, after the collection has been loaded (or
+created), perject will switch to the project in a frame that was just restored
+(or created) for the collection. If no frame was restored or created, PROJ-NAME
+is ignored."
   (interactive
    (list
 	(perject--get-collection-name "Open collection (or create new one): "
@@ -1003,15 +1008,22 @@ In interactive use, the user is asked for the collection name."
 		  (perject-desktop-load name))
 		(dolist (hook perject-auto-add-hooks)
 		  (add-hook hook #'perject--auto-add-buffer))
-		(when (and perject--desktop-restored-frames
-				   (memq perject-raise-and-focus-frame '(t open)))
-		  (select-frame-set-input-focus (car perject--desktop-restored-frames)))
+		(when-let ((restored-frame (car perject--desktop-restored-frames)))
+		  (when (and proj-name
+					 (not (string-equal
+						   (cdr (perject-current restored-frame)) proj-name)))
+			(perject-switch (cons name proj-name) restored-frame))
+		  (when (memq perject-raise-and-focus-frame '(t open))
+			(select-frame-set-input-focus restored-frame)))
 		(run-hook-with-args 'perject-after-open-hook name))
 	(perject-create name)
 	(pcase perject-switch-to-new-collection
-	  ('new (perject-create-new-frame name))
-	  ('t (perject-switch name)))
-	(message "Created collection '%s'" name)))
+	  ('new (perject-create-new-frame (if proj-name (cons name proj-name) name)))
+	  ('t (perject-switch (if proj-name (cons name proj-name) name))))
+	(message "Created collection '%s'%s" name
+			 (if proj-name
+				 (format " and project '%s'" proj-name)
+			   ""))))
 
 (defun perject-open-in-new-instance (name)
   "Open a new Emacs instance for the collection named NAME.
